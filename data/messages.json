@@ -1,0 +1,7 @@
+[
+  { "id":9001, "senderId":1002, "recipientId":1001, "subject":"Hello Alice", "body":"Meet up for coffee?", "createdAt":"2025-09-01T09:00:00Z" },
+  { "id":9002, "senderId":1001, "recipientId":1002, "subject":"Re: Hello", "body":"Sure, tomorrow works.", "createdAt":"2025-09-01T10:10:00Z" },
+  { "id":9003, "senderId":1003, "recipientId":1001, "subject":"Admin Note", "body":"Please rotate your tokens.", "createdAt":"2025-09-02T08:30:00Z" },
+  { "id":9004, "senderId":1001, "recipientId":1003, "subject":"Ping", "body":"Are you joining the study group?", "createdAt":"2025-09-03T12:00:00Z" },
+  { "id":9005, "senderId":1002, "recipientId":1003, "subject":"FYI", "body":"New policy on access control.", "createdAt":"2025-09-04T15:50:00Z" }
+]
