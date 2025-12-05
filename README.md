@@ -1,11 +1,37 @@
 <!--
 ---
-title: IDOR Clinic
-category: web-security
-difficulty: 2
-description: Interactive, client-side simulator to learn IDOR (Insecure Direct Object Reference). Practice URL/Path/Body/Header tampering and compare VULN vs SECURE. No data stored or sent.
-tags: [idor, access-control, authorization, insecure-direct-object-reference, education, simulator, web-security, visualization]
-demo: https://ipusiron.github.io/idor-clinic/
+id: day065
+slug: idor-clinic
+
+title: "IDOR Clinic"
+
+subtitle_ja: "IDOR体験ツール"
+subtitle_en: "Interactive IDOR Learning Simulator"
+
+description_ja: "Webアプリの水平方向の権限昇格脆弱性IDOR（Insecure Direct Object Reference）を体験できる、クライアントサイド完結のインタラクティブ・シミュレーター。脆弱挙動（VULN）と対策挙動（SECURE）をワンタッチで切り替え、認証と認可の違い、所有者チェックや非推測IDの重要性を視覚的に学べます。"
+description_en: "Interactive, client-side simulator to learn IDOR (Insecure Direct Object Reference). Practice URL/Path/Body/Header tampering and compare VULN vs SECURE modes. No data stored or sent."
+
+category_ja:
+  - Webセキュリティ
+category_en:
+  - Web Security
+
+difficulty: 3
+
+tags:
+  - idor
+  - access-control
+  - authorization
+  - insecure-direct-object-reference
+  - education
+  - simulator
+  - web-security
+  - visualization
+
+repo_url: "https://github.com/ipusiron/idor-clinic"
+demo_url: "https://ipusiron.github.io/idor-clinic/"
+
+hub: true
 ---
 -->
 
