@@ -5,15 +5,24 @@ App.utils = (function(){
   const base62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   function randToken(len=16){
+    if(!Number.isInteger(len) || len < 1 || len > 128) throw new RangeError('Invalid token length');
     let s='tok_';
-    for(let i=0;i<len;i++) s += base62[Math.floor(Math.random()*base62.length)];
+    // Rejection sampling avoids modulo bias. These are simulator tokens, not real credentials.
+    const bytes = new Uint8Array(64);
+    while(s.length < len + 4){
+      globalThis.crypto.getRandomValues(bytes);
+      for(const byte of bytes){
+        if(byte < 248) s += base62[byte % 62];
+        if(s.length === len + 4) break;
+      }
+    }
     return s;
   }
   function el(tag, props={}, children=[]){
     const e = document.createElement(tag);
     Object.entries(props).forEach(([k,v])=>{
       if(k==='class') e.className = v;
-      else if(k==='html') e.innerHTML = v; // WARNING: Only use with trusted content
+      else if(k==='html') throw new TypeError('HTML strings are not supported');
       else if(k.startsWith('on') && typeof v==='function') e.addEventListener(k.substring(2), v);
       else if(k==='disabled') {
         if(v) e.setAttribute('disabled', '');

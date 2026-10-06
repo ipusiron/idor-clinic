@@ -35,25 +35,34 @@ window.App = window.App || {};
     // data/*.json を試し、失敗したら内蔵データへフォールバック
     let users = defaultUsers, orders = defaultOrders, messages = defaultMessages;
     try {
+      if(location.protocol === 'file:') throw new Error('embedded');
       const [u,o,m] = await Promise.all([
         tryFetch('./data/users.json'),
         tryFetch('./data/orders.json'),
         tryFetch('./data/messages.json'),
       ]);
+      if(!App.core.validDB(u,o,m)) throw new Error('invalid-data');
       users = u; orders = o; messages = m;
     } catch(e){
-      console.warn('[IDOR Clinic] Falling back to embedded data (file load failed).');
+      // file:// cannot fetch JSON; use the same embedded fixture without console errors.
+      App.dataSource = 'embedded';
     }
     // トークンマップ（SECURE用: seqID -> token）
     const tokenMap = new Map();
     const reverseToken = new Map();
     orders.forEach(ord=>{
-      const tok = U.randToken(18);
+      let tok;
+      for(let attempt=0; attempt<10; attempt++){
+        tok = U.randToken(18);
+        if(!reverseToken.has(tok)) break;
+      }
+      if(reverseToken.has(tok)) throw new Error('Token collision');
       tokenMap.set(ord.id, tok);
       reverseToken.set(tok, ord.id);
     });
 
     App.DB = { users, orders, messages, tokenMap, reverseToken };
+    App.progress = App.core.newProgress();
     App.score = 0;
     App.attempts = [];
     App.logs = [];
