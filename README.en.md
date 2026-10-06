@@ -1,39 +1,4 @@
-<!--
----
-id: day065
-slug: idor-clinic
-
-title: "IDOR Clinic"
-
-subtitle_ja: "IDOR体験ツール"
-subtitle_en: "Interactive IDOR Learning Simulator"
-
-description_ja: "架空のプロフィール、注文、メッセージを使い、認証とオブジェクト単位の認可の違いを学ぶブラウザー内シミュレーター。VULNとSECUREを比較し、所有者検証とランダムIDの役割、模擬環境の限界を確認できます。"
-description_en: "Browser-only simulator using fictional profiles, orders and messages to teach authentication and object-level authorization. Compare VULN and SECURE, ownership checks, random references and the limits of a simulated environment."
-
-category_ja:
-  - Webセキュリティ
-category_en:
-  - Web Security
-
-difficulty: 3
-
-tags:
-  - idor
-  - access-control
-  - authorization
-  - insecure-direct-object-reference
-  - education
-  - simulator
-  - web-security
-  - visualization
-
-repo_url: "https://github.com/ipusiron/idor-clinic"
-demo_url: "https://ipusiron.github.io/idor-clinic/"
-
-hub: true
----
--->
+English · [日本語](README.md)
 # IDOR Clinic - Interactive IDOR Learning Simulator
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/ipusiron/idor-clinic?style=social)
@@ -42,9 +7,7 @@ hub: true
 ![GitHub license](https://img.shields.io/github/license/ipusiron/idor-clinic)
 [![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-blue?logo=github)](https://ipusiron.github.io/idor-clinic/)
 
-**Day065 - 100 Security Tools Built with Generative AI**
-
-[日本語](README.md)
+**Day065 - 100 Security Tools with Generative AI**
 
 IDOR Clinic is a browser-only simulator for learning about IDOR: missing authorization checks when a user changes an object ID.
 Use fictional profiles, orders and messages to compare VULN (no object authorization) with SECURE (object authorization).
