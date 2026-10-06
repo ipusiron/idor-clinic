@@ -26,9 +26,13 @@ window.App = window.App || {};
   ];
 
   async function tryFetch(path){
-    const res = await fetch(path).catch(()=>null);
-    if(!res || !res.ok) throw new Error('fetch-failed');
-    return res.json();
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),5000);
+    try {
+      const res=await fetch(path,{signal:controller.signal});
+      if(!res.ok) throw new Error('fetch-failed');
+      return await res.json();
+    } finally { clearTimeout(timer); }
   }
 
   async function loadDB(){
@@ -71,8 +75,8 @@ window.App = window.App || {};
   // 検知（擬似）
   function trackAttempt(kind, target){
     if(App.core.track(App.progress, kind, target, Date.now())){
-      App.ui.toast('疑似警告：短時間に試行が集中しています。遮断も減点もしません。', 'warn');
-      App.ui.pushLog({ kind:'detect', msg:'疑似警告：短時間に試行が集中しています。遮断も減点もしません。', ok:false });
+      App.ui.toast('warning', 'warn');
+      App.ui.pushLog({ kind:'detect', msg:'warning', ok:false });
     }
   }
 

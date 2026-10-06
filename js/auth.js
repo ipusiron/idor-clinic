@@ -11,15 +11,15 @@ window.App = window.App || {};
 
   function login(userId){
     const u = App.DB.users.find(x=>x.id === Number(userId));
-    if(!u){ App.ui.toast('ユーザが見つかりません', 'bad'); return; }
+    if(!u){ App.ui.toast('userMissing', 'bad'); return; }
     let token;
     try { token = App.utils.randToken(24); }
-    catch { App.ui.toast('安全な乱数を利用できません。ブラウザーを確認してください。', 'bad'); return; }
+    catch { App.ui.toast('randomError', 'bad'); return; }
     App.session = {user:u, token};
     App.progress.attempts = [];
     App.progress.alertActive = false;
     App.ui.resetEditors();
-    App.ui.toast(`${u.username} としてログインしました`, 'good');
+    App.ui.toast({key:'loggedIn',values:{user:u.username}}, 'good');
     App.ui.renderRoute();
   }
 
@@ -28,7 +28,7 @@ window.App = window.App || {};
     App.progress.attempts = [];
     App.progress.alertActive = false;
     App.ui.resetEditors();
-    App.ui.toast('ログアウトしました', 'warn');
+    App.ui.toast('loggedOut', 'warn');
     App.ui.renderRoute();
   }
 
