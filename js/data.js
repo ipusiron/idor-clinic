@@ -26,48 +26,57 @@ window.App = window.App || {};
   ];
 
   async function tryFetch(path){
-    const res = await fetch(path).catch(()=>null);
-    if(!res || !res.ok) throw new Error('fetch-failed');
-    return res.json();
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),5000);
+    try {
+      const res=await fetch(path,{signal:controller.signal});
+      if(!res.ok) throw new Error('fetch-failed');
+      return await res.json();
+    } finally { clearTimeout(timer); }
   }
 
   async function loadDB(){
     // data/*.json を試し、失敗したら内蔵データへフォールバック
     let users = defaultUsers, orders = defaultOrders, messages = defaultMessages;
     try {
+      if(location.protocol === 'file:') throw new Error('embedded');
       const [u,o,m] = await Promise.all([
         tryFetch('./data/users.json'),
         tryFetch('./data/orders.json'),
         tryFetch('./data/messages.json'),
       ]);
+      if(!App.core.validDB(u,o,m)) throw new Error('invalid-data');
       users = u; orders = o; messages = m;
     } catch(e){
-      console.warn('[IDOR Clinic] Falling back to embedded data (file load failed).');
+      // file:// cannot fetch JSON; use the same embedded fixture without console errors.
+      App.dataSource = 'embedded';
     }
     // トークンマップ（SECURE用: seqID -> token）
     const tokenMap = new Map();
     const reverseToken = new Map();
     orders.forEach(ord=>{
-      const tok = U.randToken(18);
+      let tok;
+      for(let attempt=0; attempt<10; attempt++){
+        tok = U.randToken(18);
+        if(!reverseToken.has(tok)) break;
+      }
+      if(reverseToken.has(tok)) throw new Error('Token collision');
       tokenMap.set(ord.id, tok);
       reverseToken.set(tok, ord.id);
     });
 
     App.DB = { users, orders, messages, tokenMap, reverseToken };
-    App.score = 0;
-    App.attempts = [];
+    App.progress = App.core.newProgress();
+    Object.defineProperty(App, 'score', {configurable:true,
+      get:()=>App.progress.score, set:value=>{ App.progress.score=value; }});
     App.logs = [];
   }
 
   // 検知（擬似）
   function trackAttempt(kind, target){
-    App.attempts.push({ t: Date.now(), kind, target });
-    const recent = App.attempts.filter(a => Date.now() - a.t < 8000);
-    const distinctTargets = new Set(recent.map(a=>a.target));
-    if(recent.length > 8 || distinctTargets.size > 5){
-      App.score = Math.max(0, App.score - 50);
-      App.ui.toast('Suspicious pattern detected', 'warn');
-      App.ui.pushLog({ kind:'detect', msg:'Suspicious pattern detected', ok:false });
+    if(App.core.track(App.progress, kind, target, Date.now())){
+      App.ui.toast('warning', 'warn');
+      App.ui.pushLog({ kind:'detect', msg:'warning', ok:false });
     }
   }
 

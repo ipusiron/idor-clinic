@@ -1,55 +1,52 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for agents working in this repository.
 
-## Project Overview
+## Purpose and limits
 
-IDOR Clinic is a client-side educational tool for demonstrating IDOR (Insecure Direct Object Reference) vulnerabilities. It's a fully static web application with no backend server, using simulated APIs and data stored in JSON files.
+IDOR Clinic is a static educational simulator with three fictional scenarios: profiles, orders and messages.
+SECURE models limited self/owner/recipient checks. It is not a real security boundary.
+Random references do not replace object-level authorization.
+Do not add actual attack requests, real credentials, rate limiting or new scenarios without an explicit scope change.
 
 ## Commands
 
-This is a static web application with no build process, package manager, or tests:
-- **Run locally**: Open `index.html` directly in a browser or serve with any HTTP server
-- **Deploy**: Push to GitHub Pages (configured for `main` branch, root folder)
-- **No npm/yarn**: Pure JavaScript without dependencies or build tools
+- Open index.html directly or run `python -m http.server 8000`
+- Run `npm test` with Node.js 22 or later; no npm install is required
+- Run `git diff --check`
+- GitHub Pages serves main at the repository root; use PRs and the user's publication workflow
 
 ## Architecture
 
-### Core Structure
-- **Hash-based routing**: Uses `#/app`, `#/compare`, `#/learn` to avoid 404s on GitHub Pages
-- **Global namespace**: All modules attached to `window.App` object
-- **Module loading order** (critical - loaded via script tags in index.html):
-  1. `utils.js` - Helper functions
-  2. `data.js` - Data initialization, token mapping
-  3. `auth.js` - Session management
-  4. `api.js` - Simulated API (VULN/SECURE mode switching)
-  5. `ui.js` - UI rendering, Attack Panel
-  6. `main.js` - Bootstrap and event binding
+Use classic browser scripts attached to window.App; core.js and messages.js also support CommonJS tests.
+preferences.js runs before the stylesheet. The body order is core, utils, data, auth, api, messages, i18n, ui, main.
+Keep paths relative for GitHub Pages and file URLs.
+Routing uses #/, #/app, #/compare and #/learn.
 
-### Mode System
-- **VULN mode**: Vulnerable behavior allowing IDOR attacks
-- **SECURE mode**: Implements proper authorization checks
-- Mode toggle affects behavior in `api.js` which branches logic based on `App.MODE`
+Public JSON is fetched from the same site during HTTP startup. Invalid or unavailable fixtures use embedded equivalents.
+file URLs use embedded fixtures directly. Fixtures contain 3 users, 6 orders and 5 messages.
+Simulated API requests are in-memory calls, not real network requests.
+Only theme and language are stored in localStorage; storage denial must not prevent startup.
 
-### Data Flow
-1. Static JSON files in `data/` loaded into memory at startup
-2. `api.js` simulates backend responses based on current mode
-3. No actual network requests - all processing is client-side
-4. Attack Panel manipulates request parameters before passing to simulated API
+## Invariants
 
-### Key Implementation Details
-- **User IDs**: Sequential (1001, 1002, 1003)
-- **Order IDs**:
-  - VULN: Predictable `ORD-000XXX` format
-  - SECURE: Random tokens `tok_XXXXXX...`
-- **Token mapping**: `data.js` maintains bidirectional maps between predictable IDs and secure tokens
-- **Rate limiting**: Simulated in `utils.js` using session storage
-- **Attack detection**: Monitors rapid consecutive attempts at different IDs
+- Both modes require simulated login
+- SECURE checks the requested profile ID; it does not ignore the query or implement /me
+- SECURE orders require a resolvable token AND matching owner
+- SECURE messages require the current session token AND matching recipient
+- Header names are case-insensitive
+- Invalid bodies and IDs must not be silently coerced
+- Score is +100 once per scenario; hints cost 30 once each, with a zero floor
+- Simulated warnings use 9 attempts or 6 targets in less than 8 seconds, without blocking or deductions
+- Logs retain 60 entries and display 12; there is no rate limiter or sessionStorage implementation
+- Mode, page and language changes preserve inputs and executed-result context
+- Login/logout initialize inputs/results and clear attempt history, while keeping score and logs
 
-## File Modifications
+## Editing and verification
 
-When modifying files:
-- Maintain relative paths (no leading `/`) for GitHub Pages compatibility
-- Keep all logic client-side
-- Preserve the global `window.App` namespace pattern
-- Test both VULN and SECURE modes after changes
+Keep dynamic UI text in the matching ja/en dictionary, using semantic keys.
+Update both READMEs and corresponding screenshots when behavior or layout changes.
+Do not insert user input as HTML or weaken CSP with unsafe-inline or unsafe-eval.
+Use text nodes, textContent and function event listeners.
+Test all users, modes, scenarios, storage denial, malformed input, HTTP/file and narrow layouts.
+See DEVELOPMENT.md for current responsibilities, state rules and verification limits.

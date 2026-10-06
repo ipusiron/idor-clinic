@@ -10,12 +10,14 @@ window.App = window.App || {};
 
   // /profile?userId=...
   function getProfile(query){
-    const qid = Number(query.userId);
+    const qid = App.core.positiveId(query?.userId);
+    if(!App.session.user) return { status:401, error:'Unauthorized', reason:'loginRequired' };
+    if(qid === null) return { status:400, error:'Bad Request', reason:'invalidId' };
     const target = App.DB.users.find(u=>u.id===qid);
     if(!target) return { status:404, error:'Not Found' };
 
     if(App.MODE==='SECURE'){
-      // 所有者強制：クエリは無視して現在ユーザのみ閲覧可
+      // The query is checked, not ignored. Only the current user's profile is allowed.
       if(!App.session.user) return { status:401, error:'Unauthorized' };
       if(App.session.user.id !== qid){
         return { status:403, error:'Forbidden (owner mismatch)' };
@@ -26,6 +28,10 @@ window.App = window.App || {};
 
   // /orders/:id   (VULN: seqID, SECURE: tokenID)
   function getOrderByIdSegment(idSegment){
+    if(!App.session.user) return { status:401, error:'Unauthorized', reason:'loginRequired' };
+    if(typeof idSegment !== 'string' || !idSegment || idSegment.length > App.core.LIMITS.order){
+      return { status:400, error:'Bad Request', reason:'invalidId' };
+    }
     if(App.MODE==='SECURE'){
       // token -> seqID へ逆引き
       const seqId = App.DB.reverseToken.get(idSegment);
@@ -45,13 +51,18 @@ window.App = window.App || {};
 
   // POST /api/messages/view  body: { messageId } headers: { X-Access-Token? }
   function postViewMessage(body, headers={}){
-    const id = Number(body?.messageId);
+    if(!App.session.user) return { status:401, error:'Unauthorized', reason:'loginRequired' };
+    const id = App.core.messageId(body);
+    if(id === null) return { status:400, error:'Bad Request', reason:'invalidBody' };
+    if(App.MODE==='SECURE' && App.core.accessToken(headers) !== App.session.token){
+      return { status:401, error:'Unauthorized (token required)', reason:'tokenRequired' };
+    }
     const msg = App.DB.messages.find(m=>m.id===id);
     if(!msg) return { status:404, error:'Not Found' };
 
     if(App.MODE==='SECURE'){
       if(!App.session.user) return { status:401, error:'Unauthorized' };
-      const token = headers['X-Access-Token'];
+      const token = App.core.accessToken(headers);
       if(!token || token !== App.session.token){
         return { status:401, error:'Unauthorized (token required)' };
       }

@@ -1,666 +1,145 @@
 # IDOR Clinic - 開発者向け技術文書
 
-## 概要
-
-IDOR Clinicは、教育目的のIDOR脆弱性シミュレーターです。本文書では、実装で使用されている技術的な仕組み、アーキテクチャー、アルゴリズムについて詳述します。
-
-## 目次
-
-1. [アーキテクチャー概要](#アーキテクチャー概要)
-2. [カスタムUI フレームワーク](#カスタムuiフレームワーク)
-3. [ページ生成システム](#ページ生成システム)
-4. [モード切替システム](#モード切替システム)
-5. [認証・認可シミュレーション](#認証認可シミュレーション)
-6. [スコアリングアルゴリズム](#スコアリングアルゴリズム)
-7. [テーマシステム](#テーマシステム)
-8. [アコーディオンUI](#アコーディオンui)
-9. [データ管理](#データ管理)
-10. [セキュリティ考慮事項](#セキュリティ考慮事項)
-
----
-
-## アーキテクチャー概要
-
-### 全体構成
-
-```
-IDOR Clinic
-├── index.html          # エントリーポイント
-├── style.css           # CSSテーマシステム
-├── js/
-│   ├── main.js         # アプリケーション初期化
-│   ├── utils.js        # カスタムDOM操作ユーティリティ
-│   ├── ui.js           # ページ生成・UI管理
-│   ├── auth.js         # 認証シミュレーション
-│   ├── api.js          # API エンドポイントシミュレーション
-│   └── data.js         # データ管理
-└── data/
-    ├── users.json      # ユーザーデータ
-    ├── orders.json     # 注文データ
-    └── messages.json   # メッセージデータ
-```
-
-### 設計原則
-
-1. **フレームワークレス**: React/Vueなどを使わず、Vanilla JavaScriptで実装
-2. **クライアントサイド完結**: サーバーサイドなし、全処理がブラウザー内で完結
-3. **教育特化**: セキュリティ学習に最適化されたUI/UX
-4. **レスポンシブ**: モバイル・デスクトップ対応
-
----
-
-## カスタムUIフレームワーク
-
-### U.el() - DOM生成ユーティリティ
-
-IDOR Clinicの核となるのは、`utils.js`で定義された`U.el()`関数です。これはReactのJSXライクな記法でDOMを生成する独自フレームワークです。
-
-#### 基本構文
-
-```javascript
-U.el(tagName, attributes, children)
-```
-
-#### 実装詳細
-
-```javascript
-function el(tag, attrs = {}, children = []) {
-  const e = document.createElement(tag);
-
-  // 属性設定
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else if (k === 'style') e.style.cssText = v;
-    else if (k === 'innerHTML') e.innerHTML = v;
-    else if (k === 'disabled') {
-      if (v) e.setAttribute('disabled', '');
-    } else if (k.startsWith('on')) {
-      e[k] = v;  // イベントハンドラー
-    } else {
-      e.setAttribute(k, v);
-    }
-  }
-
-  // 子要素追加
-  if (Array.isArray(children)) {
-    children.filter(Boolean).forEach(child => {
-      if (typeof child === 'string') {
-        e.appendChild(document.createTextNode(child));
-      } else {
-        e.appendChild(child);
-      }
-    });
-  } else if (children) {
-    e.appendChild(document.createTextNode(String(children)));
-  }
-
-  return e;
-}
-```
-
-#### 使用例
-
-```javascript
-// 複雑なUIコンポーネント
-U.el('div', {class: 'card'}, [
-  U.el('h3', {}, 'タイトル'),
-  U.el('p', {style: 'color: var(--muted);'}, '説明文'),
-  U.el('button', {
-    class: 'btn',
-    onclick: () => console.log('クリック')
-  }, 'ボタン')
-])
-```
-
-### 利点
-
-1. **軽量**: フレームワーク不要、数十行のコード
-2. **直感的**: HTML構造がJavaScriptコードから読み取れる
-3. **柔軟性**: 動的な属性・イベント処理が簡単
-4. **デバッグ**: ブラウザー標準のDOM APIを直接使用
-
----
-
-## ページ生成システム
-
-### ハッシュベースルーティング
-
-GitHub Pagesでの動作を考慮し、ハッシュベースルーティングを採用。
-
-```javascript
-function renderRoute() {
-  const h = location.hash || '#/';
-  let node;
-
-  if (h.startsWith('#/app')) node = appPage();
-  else if (h.startsWith('#/compare')) node = comparePage();
-  else if (h.startsWith('#/learn')) node = learnPage();
-  else node = homePage();
-
-  root.innerHTML = '';
-  root.appendChild(node);
-}
-
-window.addEventListener('hashchange', () => App.ui.renderRoute());
-```
-
-### ページファクトリーパターン
-
-各ページは独立した関数として実装され、DOMノードを返します。
-
-```javascript
-function homePage() {
-  const wrap = U.el('div', {class: 'grid', style: 'grid-template-columns: 1fr; gap:14px;'});
-
-  // ページコンテンツの構築
-  wrap.appendChild(U.el('div', {class: 'card'}, [
-    U.el('h3', {}, 'ようこそ — IDOR Clinic 🏥'),
-    // ... コンテンツ
-  ]));
-
-  return wrap;
-}
-```
-
-### コンポーネント指向設計
-
-再利用可能なUIコンポーネントを関数として定義。
-
-```javascript
-function helpIcon(helpText) {
-  return U.el('span', {class: 'help-tooltip'}, [
-    U.el('span', {class: 'help-icon'}, '?'),
-    U.el('span', {class: 'help-tooltiptext'}, helpText)
-  ]);
-}
-```
-
----
-
-## モード切替システム
-
-### VULN vs SECURE の実装
-
-```javascript
-let MODE = 'VULN';
-
-function setMode(newMode) {
-  MODE = newMode;
-  renderModeIndicator();
-  // UIの再描画
-}
-
-// API レスポンスがモードによって変化
-function getProfile(query) {
-  if (MODE === 'SECURE') {
-    // 認可チェック実装
-    if (!session.user || query.userId !== session.user.id) {
-      return {status: 403, error: 'Forbidden'};
-    }
-  }
-  // VULN モードでは認可チェックなし
-  return {status: 200, data: findUser(query.userId)};
-}
-```
-
-### モード別ロジック
-
-1. **VULNモード**: 認可チェックなし、IDOR攻撃が成功
-2. **SECUREモード**: 適切な認可チェック、攻撃をブロック
-
----
-
-## 認証・認可シミュレーション
-
-### セッション管理
-
-```javascript
-const session = {
-  user: null,
-  token: null,
-  loginTime: null
-};
-
-function login(username) {
-  const user = users.find(u => u.name === username);
-  if (user) {
-    session.user = user;
-    session.token = generateToken();
-    session.loginTime = Date.now();
-    return {success: true, user, token: session.token};
-  }
-  return {success: false, error: 'User not found'};
-}
-```
-
-### 権限チェックアルゴリズム
-
-```javascript
-function checkOwnership(resourceOwnerId, currentUserId) {
-  if (MODE === 'VULN') {
-    return true; // 常に許可（脆弱）
-  }
-
-  if (MODE === 'SECURE') {
-    return resourceOwnerId === currentUserId; // 所有者チェック
-  }
-}
-```
-
----
-
-## スコアリングアルゴリズム
-
-### 得点計算
-
-```javascript
-function trackAttempt(type, targetId) {
-  if (MODE === 'VULN' && session.user) {
-    const isOwnResource = checkIfOwnResource(type, targetId);
-    if (!isOwnResource) {
-      // 他人のリソースへの攻撃成功
-      score += 100;
-      logAttackSuccess(type, targetId);
-    }
-  }
-}
-
-function useHint() {
-  score = Math.max(0, score - 30); // ヒント使用でペナルティ
-}
-```
-
-### ログシステム
-
-```javascript
-function pushLog(logEntry) {
-  logs.unshift({
-    time: new Date().toLocaleTimeString(),
-    ...logEntry
-  });
-
-  // 最新12件のみ保持
-  if (logs.length > 12) {
-    logs = logs.slice(0, 12);
-  }
-}
-```
-
----
-
-## テーマシステム
-
-### CSS カスタムプロパティによる実装
-
-```css
-:root {
-  --bg: #0b0e14;
-  --panel: #11161f;
-  --text: #e8eef9;
-  --accent: #66d9ef;
-  /* ... */
-}
-
-:root.light-mode {
-  --bg: #ffffff;
-  --panel: #f8f9fa;
-  --text: #212529;
-  --accent: #0066cc;
-  /* ... */
-}
-```
-
-### JavaScript によるテーマ切替
-
-```javascript
-function applyTheme(theme) {
-  currentTheme = theme;
-  localStorage.setItem('theme', theme);
-
-  if (theme === 'light') {
-    document.documentElement.classList.add('light-mode');
-    themeToggle.textContent = '🌙';
-  } else {
-    document.documentElement.classList.remove('light-mode');
-    themeToggle.textContent = '☀️';
-  }
-}
-```
-
-### 利点
-
-- **一元管理**: 全ての色をCSS変数で管理
-- **パフォーマンス**: CSSクラス1つの変更で全体のテーマが切り替わる
-- **永続化**: localStorage でユーザー設定を保存
-
----
-
-## アコーディオンUI
-
-### 動的コンポーネント生成
-
-```javascript
-function createAccordion(title, id, content) {
-  return U.el('div', {class: 'accordion'}, [
-    U.el('button', {
-      class: 'accordion-header',
-      onclick: `toggleAccordion('${id}')`
-    }, [
-      U.el('span', {}, title),
-      U.el('span', {class: 'accordion-icon'}, '▼')
-    ]),
-    U.el('div', {
-      class: 'accordion-content',
-      id: `accordion-${id}`
-    }, content)
-  ]);
-}
-
-window.toggleAccordion = function(id) {
-  const content = document.getElementById(`accordion-${id}`);
-  const header = content.previousElementSibling;
-
-  content.classList.toggle('active');
-  header.classList.toggle('active');
-}
-```
-
-### CSSアニメーション
-
-```css
-.accordion-icon {
-  transition: transform 0.2s ease;
-}
-
-.accordion-header.active .accordion-icon {
-  transform: rotate(180deg);
-}
-
-.accordion-content {
-  display: none;
-}
-
-.accordion-content.active {
-  display: block;
-}
-```
-
----
-
-## データ管理
-
-### JSON ファイルによるデータ駆動
-
-```javascript
-// 非同期データ読み込み
-async function loadDB() {
-  const [usersRes, ordersRes, messagesRes] = await Promise.all([
-    fetch('./data/users.json'),
-    fetch('./data/orders.json'),
-    fetch('./data/messages.json')
-  ]);
-
-  users = await usersRes.json();
-  orders = await ordersRes.json();
-  messages = await messagesRes.json();
-}
-```
-
-### データ構造設計
-
-```javascript
-// users.json
-[
-  {
-    "id": 1001,
-    "name": "Alice",
-    "email": "alice@example.com",
-    "role": "user"
-  }
-]
-
-// orders.json
-[
-  {
-    "id": "ORD-000101",
-    "ownerId": 1001,
-    "items": [...],
-    "total": 1200
-  }
-]
-```
-
-### データモデル（擬似）
-
-```typescript
-type User = {
-  id: number;           // 1001, 1002, 1003...
-  username: string;     // alice, bob, carol...
-  name: string;
-  email: string;
-  role: 'user' | 'admin';
-};
-
-type Order = {
-  id: string;           // 'ORD-000123'（VULN） / 'tok_p2Yw6Q...'（SECURE）
-  ownerId: number;      // User.id
-  items: { sku:string; name:string; qty:number; price:number }[];
-  total: number;
-};
-
-type Message = {
-  id: number;           // 9001, 9002...
-  senderId: number;
-  recipientId: number;  // 所有者チェック対象
-  subject: string;
-  body: string;
-  createdAt: string;
-};
-```
-
-**シードデータ**: Alice(1001), Bob(1002), Carol(1003) 各3件の注文/メッセージ
-
-**ID性質**:
-- **VULN**: 連番・連続・推測可能
-- **SECURE**: ランダム・不可視・間接参照必須
-
----
-
-## セキュリティ考慮事項
-
-### XSS 対策
-
-```javascript
-// テキストノードとして安全に挿入
-if (typeof child === 'string') {
-  e.appendChild(document.createTextNode(child));
-}
-
-// innerHTML は意図的な場合のみ使用
-if (k === 'innerHTML') e.innerHTML = v;
-```
-
-### データ検証
-
-```javascript
-function sanitizeInput(input) {
-  return String(input).trim().slice(0, 100); // 長さ制限
-}
-
-function validateUserId(userId) {
-  return Number.isInteger(userId) && userId > 0;
-}
-```
-
-### クライアントサイド制限
-
-- すべての処理がクライアントサイドで完結
-- 実際のサーバーへの通信なし
-- ローカルストレージのみ使用（機密情報なし）
-
----
-
-## パフォーマンス最適化
-
-### 効率的なDOM操作
-
-```javascript
-// DocumentFragment による一括挿入
-function appendChildren(parent, children) {
-  const fragment = document.createDocumentFragment();
-  children.forEach(child => fragment.appendChild(child));
-  parent.appendChild(fragment);
-}
-```
-
-### 遅延読み込み
-
-```javascript
-// ページが表示される時点でコンテンツ生成
-function renderRoute() {
-  // 必要な時点でページを生成
-  const node = getCurrentPage();
-  root.innerHTML = '';
-  root.appendChild(node);
-}
-```
-
-### メモリ管理
-
-```javascript
-// イベントリスナーの適切な管理
-function cleanup() {
-  // 古いイベントリスナーを削除
-  root.innerHTML = '';
-}
-```
-
----
-
-## 開発・拡張のガイドライン
-
-### 新しいページの追加
-
-1. `ui.js` に新しいページ関数を作成
-2. `renderRoute()` にルーティングを追加
-3. ナビゲーションにリンクを追加
-
-```javascript
-function newPage() {
-  return U.el('div', {class: 'grid'}, [
-    // ページコンテンツ
-  ]);
-}
-
-// renderRoute() に追加
-else if (h.startsWith('#/new')) node = newPage();
-```
-
-### 新しいコンポーネントの作成
-
-```javascript
-function newComponent(props) {
-  return U.el('div', {class: 'component'}, [
-    U.el('h3', {}, props.title),
-    U.el('p', {}, props.description)
-  ]);
-}
-```
-
-### スタイルの追加
-
-```css
-.new-component {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-}
-```
-
----
-
-## 技術的な特徴・革新点
-
-### 1. ミニマリスト フレームワーク
-
-- **従来**: React (42KB) + React DOM (130KB)
-- **IDOR Clinic**: カスタムU.el() (< 1KB)
-
-### 2. 宣言的UI構築
-
-```javascript
-// React JSX ライク
-U.el('div', {class: 'card'}, [
-  U.el('h3', {}, title),
-  U.el('p', {}, description)
-])
-```
-
-### 3. CSS-in-JS 風スタイリング
-
-```javascript
-U.el('div', {
-  style: 'display: flex; gap: 12px; padding: 16px;'
-}, content)
-```
-
-### 4. 関数型コンポーネント
-
-```javascript
-const Button = (text, onClick) =>
-  U.el('button', {class: 'btn', onclick: onClick}, text);
-```
-
-### 5. 状態管理
-
-```javascript
-// グローバル状態
-let MODE = 'VULN';
-let session = {user: null};
-let score = 0;
-
-// 状態変更時の再描画
-function updateUI() {
-  renderModeIndicator();
-  renderLoginBox();
-  renderLogBox();
-}
-```
-
----
-
-## 今後の拡張可能性
-
-### 1. 追加の脆弱性タイプ
-
-- SQL Injection シミュレーター
-- XSS デモンストレーション
-- CSRF 攻撃体験
-
-### 2. 高度な認証メカニズム
-
-- JWT トークン管理
-- OAuth フロー シミュレーション
-- 多要素認証
-
-### 3. リアルタイム機能
-
-- WebSocket による攻撃検知
-- 複数ユーザーでの協調学習
-
-### 4. 分析機能
-
-- 学習進捗の可視化
-- 攻撃パターンの分析
-- レポート生成
-
----
-
-## まとめ
-
-IDOR Clinicは、教育目的に特化した軽量で効率的なWebアプリケーションです。フレームワークレスでありながら、現代的なコンポーネント指向の開発パターンを採用し、保守性と拡張性を両立しています。
-
-独自のDOM操作ユーティリティ `U.el()` により、直感的で読みやすいコードを実現し、CSSカスタムプロパティによるテーマシステムで優れたユーザー体験を提供しています。
-
-本文書が、IDOR Clinicの理解と今後の発展に寄与することを期待します。
+## 実行とテスト
+
+ビルド工程と外部依存ライブラリーはありません。
+`index.html`の直開き、または`python -m http.server 8000`で実行できます。
+Node.js 22以上で`npm test`を実行します。
+パッケージのインストールは不要です。
+CIはpushとpull_requestで同じテストを実行します。
+
+## モジュールと起動順
+
+| ファイル | 責務 |
+|---|---|
+| preferences.js | CSSより先にテーマと言語を決定。保存拒否を例外として処理 |
+| core.js | DOM非依存の入力検証、得点、疑似警告、データ検証。CommonJSでも利用可能 |
+| utils.js | テキストとしてのDOM生成、Web Crypto乱数、JSON表示 |
+| data.js | 公開JSONの取得、内蔵データ、注文トークンの双方向マップ、ログ初期化 |
+| auth.js | 模擬ログイン、ログアウト、モード変更 |
+| api.js | プロフィール、注文、メッセージの許可と拒否 |
+| messages.js | 同一キーを持つ日英辞書 |
+| i18n.js | 辞書展開、静的要素の翻訳、言語変更 |
+| ui.js | 4画面の構築、入力と結果の保持、ログ表示 |
+| main.js | 起動、イベント接続、初期化エラー |
+
+`preferences.js`はheadで読み込み、残りは表の順序でbodyの末尾に読み込みます。
+名前空間は`window.App`です。
+ルーティングは`#/`、`#/app`、`#/compare`、`#/learn`を使います。
+
+## データの流れ
+
+起動時に同一サイトのJSONを読み、件数、型、一意性、参照関係を検証します。
+取得失敗、異常なデータ、5秒のタイムアウトでは内蔵データを使用します。
+file直開きではfetchを試しません。
+どちらも3ユーザー、6注文、5メッセージで、内蔵データとJSONの一致をテストします。
+
+注文トークンは起動時に生成します。
+`tokenMap`は連番からトークンへ、`reverseToken`はトークンから連番へ解決します。
+`crypto.getRandomValues`と棄却法を使い、Base62の剰余偏りを避けます。
+注文は`tok_`に18文字、セッションは`tok_`に24文字を追加します。
+注文トークンの衝突は最大10回まで再試行し、乱数の利用不可や衝突継続では初期化を中止します。
+公開された架空データの参照値であり、実用の秘密や認証基盤ではありません。
+
+## APIの規則
+
+両モードとも模擬ログインが必要です。
+SECUREの認可は次の限定した規則です。
+
+| API | 入力 | SECUREの追加条件 |
+|---|---|---|
+| GET /profile | query.userId | 対象IDとログイン中のIDが一致 |
+| GET /orders/:id | 注文トークン | 解決した注文のownerIdがログイン中のIDと一致 |
+| POST /api/messages/view | body.messageId、1行のヘッダー | 現在のセッショントークンとrecipientIdの一致 |
+
+プロフィールは正の安全な整数、または先頭ゼロや空白のない10進数字列を受け付けます。
+メッセージは`messageId`だけを持つJSONオブジェクトで、値は数値の正の安全な整数に限定します。
+メッセージの認証チェックは対象の検索より前です。
+ヘッダー名は大文字小文字を区別せず、APIを直接呼んだ際の重複したトークン名は拒否します。
+
+入力上限はボディ4,096文字、ヘッダー256文字、注文ID128文字です。
+画面で送信前に弾く不正JSONや不正ヘッダーは、模擬400と今回の入力を表示します。
+模擬APIの応答は200、400、401、403、404で、実際のHTTP通信ではありません。
+既知の他人の注文トークンをSECUREに渡すと403、連番IDは404になります。
+
+## 入力と描画の分離
+
+`editor`は選択シナリオ、入力、シナリオごとの最後の結果を保持します。
+結果には実行時のモードと利用者を記録し、現在のモードと混同させません。
+モード、画面、言語の変更は入力を消しません。
+ログは翻訳キーと補間値を保持し、言語変更後に再描画します。
+模擬レスポンスのプロトコル文字列と架空データ自体は翻訳しません。
+
+ログインとログアウトは入力、結果、試行履歴を初期化します。
+得点とログは維持します。
+得点リセットは達成状況とヒント使用状況も初期化します。
+実験リセットはすべての実験状態を初期化しますが、利用者、モード、選択シナリオは維持します。
+
+## 得点と疑似警告
+
+`core.complete`はVULNの他人データ取得をシナリオごとに1回だけ+100点とします。
+3シナリオで最大300点です。
+`core.hint`はシナリオとヒント番号の組ごとに初回のみ-30点とし、0点を下回りません。
+
+`core.track`は8秒未満の窓で9回以上、または6対象以上を疑似警告にします。
+対象はシナリオと入力IDの組です。
+入力が模擬APIへ送られた時点で数え、画面で拒否した不正JSONや不正ヘッダーは数えません。
+同じ条件が続く間は再通知せず、窓内の試行配列は最大100件に制限します。
+レート制限、遮断、減点、本物の攻撃判定はありません。
+ログは60件保持、最新12件表示です。
+
+## DOMとCSP
+
+`U.el(tag, props, children)`は文字列の子要素をテキストノードに変換します。
+イベントは関数をaddEventListenerへ渡します。
+文字列イベント、html、styleプロパティは例外にし、結果の表示にはtextContentを使います。
+画面を消すときはreplaceChildrenを使います。
+開発時に入力をHTMLとして挿入する経路を追加しないでください。
+
+CSPはdefault-src noneから始め、同一オリジンのscript、style、img、connectだけを許可します。
+object、base、form、frameはnoneです。
+unsafe-inlineとunsafe-evalは使いません。
+meta CSPではframe-ancestorsを設定できず、nosniffやPermissions-PolicyもmetaタグによるHTTPヘッダー代用にはなりません。
+ホスティング側のHTTPヘッダーの設定と混同しないでください。
+
+## 表示とアクセシビリティー
+
+モバイルを基準に1列で配置し、900px以上ではリクエストとレスポンスを2列にします。
+タイトル、サブタイトル、ナビゲーションを中央揃えにします。
+グリッドの最小幅、長いIDやJSONの折り返し、比較表のセル折り返しを指定します。
+
+シナリオはtablist、tab、tabpanelを関連付けます。
+左右矢印、Home、Endで選択でき、選択中のタブだけをTabキーの移動対象にします。
+入力はlabelと結びつけ、補足をaria-describedbyで参照します。
+学習ページはネイティブのdetails/summaryです。
+ボタンと入力は44px以上、入力文字は16px以上です。
+主要な文字色は両テーマで各背景に対して4.5:1以上をテストします。
+
+## 検証範囲
+
+2026-10-07のローカル検証では、ChromiumとEdgeで次を確認しています。
+
+- HTTPとfile直開き
+- 日本語と英語
+- ライトとダーク
+- 320、390、768、1280pxの4幅
+- 各条件でホーム、実験、対策比較、学習の4画面（計256画面）
+- 小文字ヘッダー、不正JSON、既知の他人の注文トークン、キーボード、テキストとしての入力表示、言語変更時の状態保持
+- Chromiumで保存拒否と不正な公開JSONのフォールバック
+
+Firefoxは検証用実行ファイルがなく未検証です。
+Safari、実機スマートフォン、スクリーンリーダーは未検証です。
+自動テストだけで実ブラウザーの操作や読み上げを保証するものではありません。
+
+## 変更時の確認項目
+
+1. `npm test`と`git diff --check`を実行
+2. alice、bob、carolで自分と他人の対象を比較
+3. A/B/Cの入力と結果を残してモード、画面、言語を変更
+4. 不正入力で今回の400が表示され、過去の200が残らないことを確認
+5. ヒントの再利用、得点リセット、実験リセット、ログ再表示を確認
+6. HTTPとfile、明暗、日英、狭幅で表示とconsoleを確認
+7. 日英READMEの仕様、表、相対リンク、対応するスクリーンショットを同期
+
+教材の根拠はREADMEの参考資料を参照してください。
+新しい業務の認可を追加するときは、所有者限定モデルとは別に権限の規則を設計します。
