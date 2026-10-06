@@ -45,7 +45,7 @@ hub: true
 
 **Day065 - 生成AIで作るセキュリティツール100**
 
-[English](README.en.md)
+[English](README.en.md) · 日本語
 
 IDOR Clinicは、対象のIDを変更したときにアクセス権の検証が抜ける問題（IDOR）を学ぶ、ブラウザー内のシミュレーターです。
 架空のプロフィール、注文、メッセージを使い、VULN（認可なし）とSECURE（認可あり）の応答を比較します。

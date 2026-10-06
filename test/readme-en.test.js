@@ -7,9 +7,12 @@ const core=require('../js/core.js');
 const root=path.join(__dirname,'..');
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const ja=read('README.md'),en=read('README.en.md');
-const body=s=>s.slice(s.indexOf('-->')+3);
-test('README metadata is identical and keeps project identity',()=>{
-  assert.equal(ja.split('-->')[0],en.split('-->')[0]);
+const body=s=>s.includes('-->')?s.slice(s.indexOf('-->')+3):s;
+test('project metadata stays in Japanese README; English starts with the standard language link',()=>{
+  assert.ok(en.startsWith('English · [日本語](README.md)\n'));
+  assert.doesNotMatch(en,/^id:|^slug:|^hub:|^description_ja:/m);
+  assert.match(ja,/\[English\]\(README.en.md\) · 日本語/);
+  assert.match(en,/\*\*Day065 - 100 Security Tools with Generative AI\*\*/);
   assert.match(ja,/id: day065/);assert.match(ja,/slug: idor-clinic/);
   assert.match(ja,/hub: true/);
   assert.match(ja,/demo_url: "https:\/\/ipusiron.github.io\/idor-clinic\/"/);
