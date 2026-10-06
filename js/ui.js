@@ -16,13 +16,6 @@ window.App = window.App || {};
       header:user ? `X-Access-Token: ${App.session.token}` : '', results:{}};
   }
 
-  // Helper function to create help icons with tooltips
-  function helpIcon(helpText) {
-    return U.el('span',{class:'help-tooltip'},[
-      U.el('span',{class:'help-icon'},'?'),
-      U.el('span',{class:'help-tooltiptext'},helpText)
-    ]);
-  }
   function toast(msg, kind=''){
     const t = document.getElementById('toast');
 
@@ -49,23 +42,23 @@ window.App = window.App || {};
   }
   function pushLog({kind,msg,values={},ok,req,res}){
     App.logs.unshift({ time: U.now(), mode:App.MODE, user:App.session.user?.username || '-', kind, msg, values, ok, req, res });
-    const max = 60;
+    const max = App.core.LIMITS.logs;
     if(App.logs.length>max) App.logs.length = max;
   }
 
   function renderModeIndicator(){
     const indicator = document.getElementById('modeIndicator');
     if(!indicator) return;
-    indicator.innerHTML = '';
+    indicator.replaceChildren();
     const badgeClass = App.MODE === 'SECURE' ? 'mode-badge-secure' : 'mode-badge-vuln';
     indicator.appendChild(U.el('span', {class: badgeClass}, App.MODE));
   }
 
   function renderLoginBox(){
     const box = document.getElementById('loginBox');
-    if(!App.DB){ box.innerHTML=''; return; }
+    if(!App.DB){ box.replaceChildren(); return; }
     if(App.session.user){
-      box.innerHTML = '';
+      box.replaceChildren();
       box.appendChild(U.el('span', {class:'badge'}, `${App.session.user.username}`));
       box.appendChild(U.el('button', {class:'btn-ghost', onclick:()=>App.logout()}, T('logout')));
     } else {
@@ -75,7 +68,7 @@ window.App = window.App || {};
         const id = document.getElementById('loginSelect').value;
         App.login(id);
       }}, T('login'));
-      box.innerHTML = '';
+      box.replaceChildren();
       box.appendChild(sel); box.appendChild(btn);
     }
   }
@@ -372,7 +365,7 @@ window.App = window.App || {};
     else if(h.startsWith('#/compare')) node = comparePage();
     else if(h.startsWith('#/learn')) node = learnPage();
     else node = homePage();
-    root.innerHTML = ''; root.appendChild(node);
+    root.replaceChildren(node);
     node.refresh?.();
   }
 

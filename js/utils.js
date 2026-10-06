@@ -22,8 +22,11 @@ App.utils = (function(){
     const e = document.createElement(tag);
     Object.entries(props).forEach(([k,v])=>{
       if(k==='class') e.className = v;
-      else if(k==='html') throw new TypeError('HTML strings are not supported');
-      else if(k.startsWith('on') && typeof v==='function') e.addEventListener(k.substring(2), v);
+      else if(k==='html' || k==='style') throw new TypeError('HTML strings and inline styles are not supported');
+      else if(k.startsWith('on')) {
+        if(typeof v!=='function') throw new TypeError('Event handlers must be functions');
+        e.addEventListener(k.substring(2),v);
+      }
       else if(k==='disabled') {
         if(v) e.setAttribute('disabled', '');
         // false の場合は属性を設定しない

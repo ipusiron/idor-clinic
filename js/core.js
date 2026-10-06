@@ -82,12 +82,12 @@
     const unique = (rows, key)=>new Set(rows.map(row=>row[key])).size === rows.length;
     if(!Array.isArray(users) || !Array.isArray(orders) || !Array.isArray(messages)) return false;
     if(users.length !== 3 || orders.length !== 6 || messages.length !== 5) return false;
-    if(!users.every(u=>u && positiveId(u.id) && ['username','name','email','role'].every(k=>typeof u[k] === 'string'))) return false;
+    if(!users.every(u=>u && typeof u.id==='number' && positiveId(u.id) && ['username','name','email','role'].every(k=>typeof u[k] === 'string'))) return false;
     const ids = new Set(users.map(u=>u.id));
     if(!orders.every(o=>o && typeof o.id === 'string' && /^ORD-[0-9]{6}$/.test(o.id) && ids.has(o.ownerId)
       && Number.isFinite(o.total) && Array.isArray(o.items) && o.items.every(i=>i && typeof i.name === 'string'
         && typeof i.sku === 'string' && Number.isFinite(i.qty) && Number.isFinite(i.price)))) return false;
-    if(!messages.every(m=>m && positiveId(m.id) && ids.has(m.senderId) && ids.has(m.recipientId)
+    if(!messages.every(m=>m && typeof m.id==='number' && positiveId(m.id) && ids.has(m.senderId) && ids.has(m.recipientId)
       && ['subject','body','createdAt'].every(k=>typeof m[k] === 'string'))) return false;
     return unique(users,'id') && unique(orders,'id') && unique(messages,'id');
   }
