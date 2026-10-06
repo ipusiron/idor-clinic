@@ -1,89 +1,107 @@
-// api.js
+// Shared, side-effect-free decisions for this browser-only learning simulator.
 window.App = window.App || {};
 (function(){
-  const U = App.utils;
-
-  function sanitizeUser(u){
-    // 実際には最小化するが、学習用に一部残す
-    return { id:u.id, username:u.username, name:u.name, email:u.email, role:u.role };
+  const C = App.core;
+  function stages(kind, preflight=false){
+    const keys = preflight ? ['traceInput','traceLogin'] : ['traceLogin','traceInput'];
+    if(kind==='message') keys.push('traceToken');
+    keys.push('traceTarget',kind==='message'?'traceRecipient':'traceOwner');
+    return keys.map(key=>({key,state:'traceNotRun'}));
+  }
+  function evaluate(kind, input, mode=App.MODE, session=App.session){
+    const steps=stages(kind);
+    const mark=(key,state)=>{steps.find(s=>s.key===key).state=state;};
+    const done=res=>({res,steps});
+    const fail=(key,status,error,reason)=>{
+      mark(key,'traceFail');
+      return done({status,error,...(reason?{reason}:{})});
+    };
+    if(!session.user) return fail('traceLogin',401,'Unauthorized','loginRequired');
+    mark('traceLogin','tracePass');
+    const id=kind==='profile'?C.positiveId(input.id):kind==='message'?C.messageId(input.body):input.id;
+    if(kind==='order' ? typeof id!=='string'||!id||id.length>C.LIMITS.order : id===null){
+      return fail('traceInput',400,'Bad Request',kind==='message'?'invalidBody':'invalidId');
+    }
+    mark('traceInput','tracePass');
+    if(kind==='message'){
+      if(mode==='SECURE'){
+        if(!session.token || C.accessToken(input.headers)!==session.token)
+          return fail('traceToken',401,'Unauthorized (token required)','tokenRequired');
+        mark('traceToken','tracePass');
+      } else mark('traceToken','traceUnchecked');
+    }
+    const targetId=kind==='order' && mode==='SECURE'?App.DB.reverseToken.get(id):id;
+    const rows=App.DB[kind==='profile'?'users':kind==='order'?'orders':'messages'];
+    const target=rows.find(row=>row.id===targetId);
+    if(!target) return fail('traceTarget',404,
+      kind==='order' && mode==='SECURE' && !targetId?'Not Found (invalid token)':'Not Found');
+    mark('traceTarget','tracePass');
+    const ownerKey=kind==='profile'?'id':kind==='order'?'ownerId':'recipientId';
+    const checkKey=kind==='message'?'traceRecipient':'traceOwner';
+    if(mode==='SECURE'){
+      if(target[ownerKey]!==session.user.id)
+        return fail(checkKey,403,kind==='message'?'Forbidden (recipient mismatch)':'Forbidden (owner mismatch)');
+      mark(checkKey,'tracePass');
+    } else mark(checkKey,'traceUnchecked');
+    const data=kind==='profile'
+      ? {id:target.id,username:target.username,name:target.name,email:target.email,role:target.role}
+      : target;
+    return done({status:200,data});
   }
 
-  // /profile?userId=...
-  function getProfile(query){
-    const qid = App.core.positiveId(query?.userId);
-    if(!App.session.user) return { status:401, error:'Unauthorized', reason:'loginRequired' };
-    if(qid === null) return { status:400, error:'Bad Request', reason:'invalidId' };
-    const target = App.DB.users.find(u=>u.id===qid);
-    if(!target) return { status:404, error:'Not Found' };
-
-    if(App.MODE==='SECURE'){
-      // The query is checked, not ignored. Only the current user's profile is allowed.
-      if(!App.session.user) return { status:401, error:'Unauthorized' };
-      if(App.session.user.id !== qid){
-        return { status:403, error:'Forbidden (owner mismatch)' };
+  // Inspect raw editor text. This is also the normal UI execution path.
+  function inspect(scenario, input, mode=App.MODE){
+    let req, result;
+    if(scenario==='A'){
+      req={method:'GET',path:'/profile',query:{userId:input.profile}};
+      result=evaluate('profile',{id:input.profile},mode);
+    } else if(scenario==='B'){
+      const id=input.order.trim();
+      req={method:'GET',path:'/orders/'+id};
+      result=evaluate('order',{id},mode);
+    } else if(scenario==='C'){
+      const body=C.parseBody(input.body), headers=C.parseHeader(input.header);
+      if(body.error||headers.error){
+        req={method:'POST',path:'/api/messages/view',body:input.body,headers:input.header};
+        const steps=stages('message',true);
+        steps[0].state='traceFail';
+        result={res:{status:400,error:'Bad Request',reason:headers.error||body.error},steps};
+      } else {
+        req={method:'POST',path:'/api/messages/view',headers:headers.headers,body:body.body};
+        result=evaluate('message',{body:body.body,headers:headers.headers},mode);
       }
-    }
-    return { status:200, data: sanitizeUser(target) };
+    } else throw new TypeError('Unknown scenario');
+    return {req,...result,mode,user:App.session.user?.username||'-'};
   }
 
-  // /orders/:id   (VULN: seqID, SECURE: tokenID)
-  function getOrderByIdSegment(idSegment){
-    if(!App.session.user) return { status:401, error:'Unauthorized', reason:'loginRequired' };
-    if(typeof idSegment !== 'string' || !idSegment || idSegment.length > App.core.LIMITS.order){
-      return { status:400, error:'Bad Request', reason:'invalidId' };
+  // Order comparison converts references only after resolving the current-mode input.
+  // No mode switching, scoring, logging, tracking or session mutation occurs here.
+  function compare(scenario,input){
+    const pair={VULN:{...input},SECURE:{...input}};
+    let target=null;
+    if(scenario==='B'){
+      const id=input.order.trim();
+      if(!id||id.length>C.LIMITS.order) return {error:'compareUnresolved'};
+      const seq=App.MODE==='SECURE'?App.DB.reverseToken.get(id):id;
+      if(!App.DB.orders.some(o=>o.id===seq)) return {error:'compareUnresolved'};
+      const token=App.DB.tokenMap.get(seq);
+      if(!token) return {error:'compareUnresolved'};
+      target=seq;
+      pair.VULN.order=seq;pair.SECURE.order=token;
     }
-    if(App.MODE==='SECURE'){
-      // token -> seqID へ逆引き
-      const seqId = App.DB.reverseToken.get(idSegment);
-      if(!seqId) return { status:404, error:'Not Found (invalid token)' };
-      const ord = App.DB.orders.find(o=>o.id===seqId);
-      if(!ord) return { status:404, error:'Not Found' };
-      if(!App.session.user) return { status:401, error:'Unauthorized' };
-      if(ord.ownerId !== App.session.user.id) return { status:403, error:'Forbidden (owner mismatch)' };
-      return { status:200, data: ord };
-    } else {
-      const ord = App.DB.orders.find(o=>o.id===idSegment);
-      if(!ord) return { status:404, error:'Not Found' };
-      // VULN: 所有者チェックなし
-      return { status:200, data: ord };
-    }
+    return {target,results:['VULN','SECURE'].map(mode=>inspect(scenario,pair[mode],mode))};
   }
-
-  // POST /api/messages/view  body: { messageId } headers: { X-Access-Token? }
-  function postViewMessage(body, headers={}){
-    if(!App.session.user) return { status:401, error:'Unauthorized', reason:'loginRequired' };
-    const id = App.core.messageId(body);
-    if(id === null) return { status:400, error:'Bad Request', reason:'invalidBody' };
-    if(App.MODE==='SECURE' && App.core.accessToken(headers) !== App.session.token){
-      return { status:401, error:'Unauthorized (token required)', reason:'tokenRequired' };
-    }
-    const msg = App.DB.messages.find(m=>m.id===id);
-    if(!msg) return { status:404, error:'Not Found' };
-
-    if(App.MODE==='SECURE'){
-      if(!App.session.user) return { status:401, error:'Unauthorized' };
-      const token = App.core.accessToken(headers);
-      if(!token || token !== App.session.token){
-        return { status:401, error:'Unauthorized (token required)' };
-      }
-      if(msg.recipientId !== App.session.user.id){
-        return { status:403, error:'Forbidden (recipient mismatch)' };
-      }
-    }
-    return { status:200, data: msg };
-  }
-
   function listMyOrders(){
     if(!App.session.user) return [];
-    if(App.MODE==='SECURE'){
-      // 自分の注文をトークンIDで見せる
-      return App.DB.orders.filter(o=>o.ownerId===App.session.user.id)
-        .map(o=>({ id: App.DB.tokenMap.get(o.id), original:o.id, total:o.total }));
-    } else {
-      return App.DB.orders.filter(o=>o.ownerId===App.session.user.id)
-        .map(o=>({ id: o.id, total:o.total }));
-    }
+    return App.DB.orders.filter(o=>o.ownerId===App.session.user.id).map(o=>({
+      id:App.MODE==='SECURE'?App.DB.tokenMap.get(o.id):o.id,
+      ...(App.MODE==='SECURE'?{original:o.id}:{}),total:o.total
+    }));
   }
-
-  App.API = { getProfile, getOrderByIdSegment, postViewMessage, listMyOrders };
+  App.API={
+    getProfile:query=>evaluate('profile',{id:query?.userId}).res,
+    getOrderByIdSegment:id=>evaluate('order',{id}).res,
+    postViewMessage:(body,headers={})=>evaluate('message',{body,headers}).res,
+    inspect,compare,listMyOrders
+  };
 })();
