@@ -6,8 +6,26 @@ window.App = window.App || {};
 
   let toastTimeout;
   let editor = {scenario:'A', profile:'', order:'', body:'', header:'', results:{}};
+  let comparisons={}, openedHints={}, guided={active:false,stage:0};
+
+  function snapshot(scenario){
+    return App.core.snapshot(scenario,editor,App.MODE,App.session.user?.id||null);
+  }
+
+  function traceView(result,level=3){
+    return U.el('section',{class:'decision-trace'},[
+      U.el('h'+level,{},T('traceTitle')),
+      result.targetContext?U.el('p',{},T('traceContext',{
+        ...result.targetContext,role:T('role'+result.targetContext.role)})):null,
+      U.el('ol',{},result.steps.map(step=>U.el('li',{},[
+        U.el('span',{},T(step.key)+': '),
+        U.el('strong',{class:step.state==='traceFail'?'trace-fail':''},T(step.state))
+      ])))
+    ]);
+  }
 
   function resetEditors(){
+    comparisons={};openedHints={};guided.stage=0;
     const user = App.session.user;
     const message = App.DB.messages.find(m=>m.recipientId === user?.id);
     editor = {scenario:editor.scenario, profile:String(user?.id || ''),
@@ -51,7 +69,7 @@ window.App = window.App || {};
     if(!indicator) return;
     indicator.replaceChildren();
     const badgeClass = App.MODE === 'SECURE' ? 'mode-badge-secure' : 'mode-badge-vuln';
-    indicator.appendChild(U.el('span', {class: badgeClass}, App.MODE));
+    indicator.appendChild(U.el('span', {class: badgeClass}, T(App.MODE==='SECURE'?'modeSecure':'modeVuln')));
   }
 
   function renderLoginBox(){
@@ -109,6 +127,29 @@ window.App = window.App || {};
     if(!App.session.user) container.appendChild(U.el('div',{class:'login-prompt'},[
       U.el('strong',{},T('loginRequired')), U.el('p',{},T('loginPrompt'))
     ]));
+    const guideBox=U.el('section',{class:'card'},[
+      U.el('h2',{},T('guideTitle')),
+      U.el('button',{id:'guideToggle',class:'btn-ghost',onclick:()=>{
+        guided.active=!guided.active;renderGuide();
+      }},T(guided.active?'guideEnd':'guideStart')),
+      U.el('div',{id:'guideBody'},[
+        U.el('p',{},T('guideHelp')),
+        U.el('p',{id:'guideStep',role:'status','aria-live':'polite'}),
+        U.el('button',{id:'guideLoad',class:'btn-ghost',onclick:()=>{
+          const user=App.session.user;
+          if(!user) return;
+          const other=App.DB.users.find(u=>u.id!==user.id);
+          editor.profile=String(guided.stage===0?user.id:other.id);
+          editor.scenario='A';
+          App.setMode(guided.stage===2?'SECURE':'VULN');
+          document.getElementById('input-A').focus();
+        }},T('guideLoad')),
+        U.el('button',{id:'guideRestart',class:'btn-ghost',onclick:()=>{
+          guided.stage=0;renderGuide();document.getElementById('guideLoad').focus();
+        }},T('guideRestart'))
+      ])
+    ]);
+    container.appendChild(guideBox);
     const tabCard=U.el('section',{class:'card'});
     const tabs=U.el('div',{class:'sub-tabs',role:'tablist','aria-label':T('scenarios')});
     const buttons={}, panels={};
@@ -133,7 +174,7 @@ window.App = window.App || {};
       panel.append(U.el('h2',{},T('scenario'+scenario)),U.el('p',{},T('desc'+scenario)));
       panel.append(U.el('label',{for:id},T(c.title)),U.el('p',{class:'help-text',id:id+'-help'},T(c.help)));
       const props={id,class:'input','aria-describedby':id+'-help',
-        oninput:e=>{editor[c.field]=e.target.value;}};
+        oninput:e=>{editor[c.field]=e.target.value;renderResult();renderComparison();}};
       let input;
       if(scenario==='C'){
         input=U.el('textarea',{...props,rows:5,maxlength:App.core.LIMITS.body},editor.body);
@@ -156,6 +197,7 @@ window.App = window.App || {};
           App.MODE==='SECURE'?'orderSecure':'orderVuln')),
           U.el('button',{class:'btn-ghost',disabled:!App.session.user,onclick:()=>{
             editor.order=App.API.listMyOrders()[0]?.id||'';input.value=editor.order;
+            renderResult();renderComparison();
           }},T('ownOrder')));
       } else {
         panel.append(U.el('p',{class:'small'},T('messageTip')),
@@ -163,14 +205,15 @@ window.App = window.App || {};
           U.el('p',{class:'help-text',id:'headerHelp'},T('headerHelp')),
           U.el('input',{id:'headerInput',class:'input',type:'text',value:editor.header,
             maxlength:App.core.LIMITS.header,'aria-describedby':'headerHelp',
-            oninput:e=>{editor.header=e.target.value;}}));
+            oninput:e=>{editor.header=e.target.value;renderResult();renderComparison();}}));
         if(!App.session.user) panel.appendChild(U.el('p',{class:'small'},T('tokenLogin')));
       }
       panel.append(U.el('div',{class:'btn-group action-row'},U.el('button',{
         class:'btn',disabled:!App.session.user,onclick:()=>send(scenario)},T(c.send))),
         U.el('hr',{class:'sep'}),U.el('p',{},T('hintLabel')),
         U.el('div',{class:'btn-group'},[1,2,3].map(n=>U.el('button',{
-          class:'btn-ghost',disabled:!App.session.user,onclick:()=>hint(scenario,n)},T('hintButton',{n})))));
+          class:'btn-ghost',disabled:!App.session.user,onclick:()=>hint(scenario,n)},T('hintButton',{n})))),
+        U.el('div',{id:'hints-'+scenario,class:'pinned-hints'}));
       panels[scenario]=panel;
     }
     tabCard.append(tabs,...Object.values(panels));
@@ -184,8 +227,18 @@ window.App = window.App || {};
         U.el('h2',{},T('response')),U.el('p',{class:'help-text'},T('responseHelp')),
         U.el('div',{id:'statusBadge',role:'status','aria-live':'polite'}),
         U.el('pre',{class:'code result-code',id:'resBox'},T('emptyResponse')),
-        U.el('p',{class:'small'},T('lastResult'))
+        U.el('p',{class:'small',id:'resultFreshness',role:'status','aria-live':'polite'}),
+        U.el('div',{id:'traceBox'})
       ])
+    ]));
+    container.appendChild(U.el('section',{class:'card'},[
+      U.el('h2',{},T('compareResults')),U.el('p',{class:'help-text'},T('compareHelp')),
+      U.el('button',{id:'compareRun',class:'btn-ghost',disabled:!App.session.user,onclick:()=>{
+        comparisons[editor.scenario]={...App.API.compare(editor.scenario,editor),snapshot:snapshot(editor.scenario)};
+        renderComparison();
+      }},T('compareRun')),
+      U.el('p',{id:'compareFreshness',class:'small',role:'status','aria-live':'polite'}),
+      U.el('div',{id:'compareBox'}),U.el('p',{class:'small'},T('traceLimit'))
     ]));
     container.appendChild(U.el('section',{class:'card'},[
       U.el('h2',{},T('scoreLog')),U.el('p',{class:'help-text'},T('scoreHelp')),
@@ -193,7 +246,7 @@ window.App = window.App || {};
       U.el('div',{class:'btn-group action-row'},[
         U.el('button',{class:'btn-ghost',id:'clearScore',onclick:()=>{
           App.score=0;App.progress.completed=[];App.progress.hints=[];
-          renderLogBox();toast('clearedScore','warn');
+          openedHints={};renderHints();renderLogBox();toast('clearedScore','warn');
         }},T('clearScore')),
         U.el('button',{class:'btn-ghost',id:'clearLogs',onclick:()=>{
           App.logs=[];renderLogBox();toast('clearedLogs','warn');
@@ -215,7 +268,49 @@ window.App = window.App || {};
         panels[key].classList.toggle('active',active);
         panels[key].hidden=!active;
       }
-      renderResult();
+      renderResult();renderComparison();renderHints();renderGuide();
+    }
+    function renderGuide(){
+      document.getElementById('guideToggle').textContent=T(guided.active?'guideEnd':'guideStart');
+      document.getElementById('guideToggle').setAttribute('aria-expanded',String(guided.active));
+      document.getElementById('guideToggle').setAttribute('aria-controls','guideBody');
+      document.getElementById('guideBody').hidden=!guided.active;
+      const user=App.session.user,other=App.DB.users.find(u=>u.id!==user?.id);
+      document.getElementById('guideStep').textContent=!user?T('loginPrompt'):guided.stage===3?T('guideDone'):
+        T('guideStep'+guided.stage,{user:user.username,other:other.username,id:guided.stage===0?user.id:other.id});
+      document.getElementById('guideLoad').disabled=!user;
+      document.getElementById('guideLoad').hidden=guided.stage===3;
+      document.getElementById('guideRestart').hidden=guided.stage===0;
+    }
+    function renderHints(){
+      for(const scenario of ['A','B','C']){
+        const box=document.getElementById('hints-'+scenario);
+        box.replaceChildren();
+        const hints=openedHints[scenario]||{};
+        if(Object.keys(hints).length) box.append(U.el('h3',{},T('pinnedHints')),
+          ...Object.entries(hints).map(([n,h])=>U.el('p',{},T('hintButton',{n})+': '+T(h.key,{id:h.id}))));
+      }
+    }
+    function renderComparison(){
+      const box=document.getElementById('compareBox');
+      if(!box) return;
+      box.replaceChildren();
+      const s=comparisons[editor.scenario],note=document.getElementById('compareFreshness');
+      note.textContent=s?T(s.snapshot===snapshot(editor.scenario)?'currentResult':'changed'):'';
+      note.classList.toggle('notice',Boolean(s && s.snapshot!==snapshot(editor.scenario)));
+      if(!s) return;
+      if(s.error){box.append(U.el('p',{class:'notice'},T(s.error)));return;}
+      if(s.target) box.append(U.el('p',{},T('compareOrder',{id:s.target})));
+      box.append(U.el('div',{class:'split'},s.results.map(r=>U.el('section',{class:'item'},[
+        U.el('h3',{},T(r.mode==='VULN'?'modeVuln':'modeSecure')),
+        U.el('p',{},T('executed',{mode:r.mode,user:r.user,scenario:editor.scenario})),
+        U.el('p',{class:'status-badge '+(r.res.status===200?'status-200':'status-error')},'HTTP '+r.res.status),
+        U.el('p',{},T('compareReference')+': '+(editor.scenario==='A'?r.req.path+'?userId='+r.req.query.userId:
+          editor.scenario==='B'?r.req.path:U.code(r.req.body))),
+        U.el('details',{},[U.el('summary',{},T('request')),U.el('pre',{class:'code'},U.code(r.req))]),
+        U.el('details',{},[U.el('summary',{},T('response')),U.el('pre',{class:'code'},U.code(r.res))]),
+        traceView(r,4)
+      ]))));
     }
     function renderResult(){
       const box=document.getElementById('statusBadge');
@@ -225,10 +320,15 @@ window.App = window.App || {};
       card.classList.remove('response-success','response-error');
       document.getElementById('reqBox').textContent=s?U.code(s.req):T('emptyRequest');
       document.getElementById('resBox').textContent=s?U.code(s.res):T('emptyResponse');
+      const note=document.getElementById('resultFreshness');
+      note.textContent=s?T(s.snapshot===snapshot(editor.scenario)?'currentResult':'changed'):'';
+      note.classList.toggle('notice',Boolean(s && s.snapshot!==snapshot(editor.scenario)));
+      const trace=document.getElementById('traceBox');trace.replaceChildren();
       if(s){
         box.append(U.el('p',{class:'small'},T('executed',{mode:s.mode,user:s.user,scenario:editor.scenario})),
           U.el('div',{class:'status-badge '+(s.res.status===200?'status-200':'status-error')},'HTTP '+s.res.status));
         card.classList.add(s.res.status===200?'response-success':'response-error');
+        trace.append(traceView(s),U.el('p',{class:'small'},T('traceLimit')));
       }
     }
     function renderLogBox(){
@@ -249,24 +349,16 @@ window.App = window.App || {};
     }
     function send(scenario){
       const c=config[scenario];
-      let req,res;
+      const result=App.API.inspect(scenario,editor),{req,res}=result;
       if(scenario==='A'){
-        req={method:'GET',path:'/profile',query:{userId:editor.profile}};
-        App.trackAttempt('profile',editor.profile);res=App.API.getProfile(req.query);
+        App.trackAttempt('profile',editor.profile);
       } else if(scenario==='B'){
-        const id=editor.order.trim();
-        req={method:'GET',path:'/orders/'+id};
-        App.trackAttempt('order',id);res=App.API.getOrderByIdSegment(id);
+        App.trackAttempt('order',editor.order.trim());
       } else {
-        const body=App.core.parseBody(editor.body),headers=App.core.parseHeader(editor.header);
-        if(body.error||headers.error){
-          req={method:'POST',path:'/api/messages/view',body:editor.body,headers:editor.header};
-          res={status:400,error:'Bad Request',reason:headers.error||body.error};
+        if(typeof req.body==='string'){
           toast('invalidInput','bad');
         } else {
-          req={method:'POST',path:'/api/messages/view',headers:headers.headers,body:body.body};
-          App.trackAttempt('message',String(body.body.messageId));
-          res=App.API.postViewMessage(body.body,headers.headers);
+          App.trackAttempt('message',String(req.body.messageId));
         }
       }
       const foreign=res.status===200 && App.MODE==='VULN' && App.session.user &&
@@ -278,8 +370,12 @@ window.App = window.App || {};
         toast(msg,'good');
       }
       pushLog({kind:c.kind,msg,ok:res.status===200,req,res});
-      editor.results[scenario]={req,res,mode:App.MODE,user:App.session.user?.username||'-'};
-      renderResult();renderLogBox();
+      editor.results[scenario]={...result,snapshot:snapshot(scenario)};
+      if(guided.active && App.session.user){
+        const userId=App.session.user.id,other=App.DB.users.find(u=>u.id!==userId);
+        guided.stage=App.core.guideNext(guided.stage,{...result,scenario,userId},userId,other.id);
+      }
+      renderResult();renderLogBox();renderGuide();
     }
     function hint(scenario,n){
       if(!App.session.user) return;
@@ -288,10 +384,11 @@ window.App = window.App || {};
         scenario==='B'?App.DB.orders.find(o=>o.ownerId!==App.session.user.id).id:
         App.DB.messages.find(m=>m.recipientId!==App.session.user.id).id;
       const detailKey='hint'+(scenario==='A'?'Profile':scenario==='B'?'Order':'Message')+n;
+      (openedHints[scenario] ||= {})[n]={key:detailKey,id};
       App.core.hint(App.progress,kind,n);
       toast({key:'hintToast',values:{scenario:T('scenario'+scenario),n,detail:T(detailKey,{id})}},'warn');
       pushLog({kind:'hint',msg:'hintToast',values:{scenario,n,detailKey,id},ok:true});
-      renderLogBox();
+      renderLogBox();renderHints();
     }
     container.refresh=()=>{switchTab(editor.scenario);renderLogBox();};
     return container;
