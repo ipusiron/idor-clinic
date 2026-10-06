@@ -92,5 +92,20 @@
     return unique(users,'id') && unique(orders,'id') && unique(messages,'id');
   }
 
-  return {LIMITS, positiveId, messageId, parseBody, parseHeader, accessToken, newProgress, complete, hint, track, validDB};
+  function snapshot(scenario,input,mode,userId){
+    const fields=scenario==='A'?[input.profile]:scenario==='B'?[input.order]:[input.body,input.header];
+    return JSON.stringify([scenario,mode,userId,...fields]);
+  }
+
+  function guideNext(stage,result,userId,targetId){
+    if(result.scenario!=='A' || result.userId!==userId) return stage;
+    const id=positiveId(result.req?.query?.userId);
+    if(stage===0 && result.mode==='VULN' && id===userId && result.res.status===200) return 1;
+    if(stage===1 && result.mode==='VULN' && id===targetId && targetId!==userId && result.res.status===200) return 2;
+    if(stage===2 && result.mode==='SECURE' && id===targetId && targetId!==userId && result.res.status===403) return 3;
+    return stage;
+  }
+
+  return {LIMITS, positiveId, messageId, parseBody, parseHeader, accessToken, newProgress, complete, hint, track, validDB,
+    snapshot,guideNext};
 });

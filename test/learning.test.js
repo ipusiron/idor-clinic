@@ -98,3 +98,26 @@ test('comparison preserves invalid message credentials instead of making them va
   assert.equal(results[0].res.status,200);assert.equal(results[1].res.status,401);
   assert.equal(results[1].req.headers['x-access-token'],'wrong');
 });
+test('snapshots track only the current scenario plus mode and user, without normalizing edits',()=>{
+  const snap=(s,i=input,m='VULN',u=1001)=>core.snapshot(s,i,m,u);
+  assert.notEqual(snap('A'),snap('A',{...input,profile:'1001'}));
+  assert.equal(snap('A'),snap('A',{...input,order:'different'}));
+  assert.notEqual(snap('A'),snap('A',input,'SECURE'));
+  assert.notEqual(snap('A'),snap('A',input,'VULN',1002));
+  assert.notEqual(snap('B'),snap('B',{...input,order:input.order+' '}));
+  assert.notEqual(snap('C'),snap('C',{...input,header:''}));
+  assert.notEqual(snap('C'),snap('C',{...input,body:'null'}));
+  assert.equal(snap('C'),snap('C',{...input}));
+});
+test('guide advances only on the expected scenario, user, target, mode and actual response',()=>{
+  const result=(id,mode,status)=>({scenario:'A',userId:1001,mode,req:{query:{userId:id}},res:{status}});
+  assert.equal(core.guideNext(0,result('1001','VULN',200),1001,1002),1);
+  assert.equal(core.guideNext(1,result('1002','VULN',200),1001,1002),2);
+  assert.equal(core.guideNext(2,result('1002','SECURE',403),1001,1002),3);
+  for(const r of [result('1002','VULN',200),result('1001','SECURE',200),result('1001','VULN',400),
+    {...result('1001','VULN',200),scenario:'B'}, {...result('1001','VULN',200),userId:1002}])
+    assert.equal(core.guideNext(0,r,1001,1002),0);
+  assert.equal(core.guideNext(1,result('1003','VULN',200),1001,1002),1);
+  assert.equal(core.guideNext(2,result('1002','SECURE',404),1001,1002),2);
+  assert.equal(core.guideNext(3,result('1001','VULN',200),1001,1002),3);
+});

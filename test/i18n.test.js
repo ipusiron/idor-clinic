@@ -22,6 +22,10 @@ test('static and literal dictionary references exist',()=>{
     references.forEach(m=>assert.ok(Object.hasOwn(messages.en,m[1]),file+': '+m[1]));
   }
   for(const scenario of ['A','B','C']) assert.ok(messages.en['scenario'+scenario]);
+  for(const step of [0,1,2]) assert.ok(messages.en['guideStep'+step]);
+  for(const kind of ['profile','order','message']) assert.ok(messages.en['role'+kind]);
+  for(const name of ['Title','Login','Input','Token','Target','Self','Owner','Recipient','Pass','Fail','NotRun','Unchecked','Context','Limit'])
+    assert.ok(messages.en['trace'+name]);
   for(const kind of ['Profile','Order','Message']){
     for(const prefix of ['success','retrieved']) assert.ok(messages.en[prefix+kind]);
     for(const level of [1,2,3]) assert.ok(messages.en['hint'+kind+level]);

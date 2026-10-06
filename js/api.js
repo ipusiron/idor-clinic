@@ -5,13 +5,14 @@ window.App = window.App || {};
   function stages(kind, preflight=false){
     const keys = preflight ? ['traceInput','traceLogin'] : ['traceLogin','traceInput'];
     if(kind==='message') keys.push('traceToken');
-    keys.push('traceTarget',kind==='message'?'traceRecipient':'traceOwner');
+    keys.push('traceTarget',kind==='message'?'traceRecipient':kind==='profile'?'traceSelf':'traceOwner');
     return keys.map(key=>({key,state:'traceNotRun'}));
   }
   function evaluate(kind, input, mode=App.MODE, session=App.session){
     const steps=stages(kind);
+    let targetContext=null;
     const mark=(key,state)=>{steps.find(s=>s.key===key).state=state;};
-    const done=res=>({res,steps});
+    const done=res=>({res,steps,targetContext});
     const fail=(key,status,error,reason)=>{
       mark(key,'traceFail');
       return done({status,error,...(reason?{reason}:{})});
@@ -37,7 +38,8 @@ window.App = window.App || {};
       kind==='order' && mode==='SECURE' && !targetId?'Not Found (invalid token)':'Not Found');
     mark('traceTarget','tracePass');
     const ownerKey=kind==='profile'?'id':kind==='order'?'ownerId':'recipientId';
-    const checkKey=kind==='message'?'traceRecipient':'traceOwner';
+    targetContext={id:target.id,role:kind,owner:App.DB.users.find(u=>u.id===target[ownerKey])?.username||'-'};
+    const checkKey=kind==='message'?'traceRecipient':kind==='profile'?'traceSelf':'traceOwner';
     if(mode==='SECURE'){
       if(target[ownerKey]!==session.user.id)
         return fail(checkKey,403,kind==='message'?'Forbidden (recipient mismatch)':'Forbidden (owner mismatch)');
