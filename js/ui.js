@@ -4,6 +4,16 @@ window.App = window.App || {};
   const U = App.utils;
 
   let toastTimeout;
+  let editor = {scenario:'A', profile:'', order:'', body:'', header:'', results:{}};
+
+  function resetEditors(){
+    const user = App.session.user;
+    const message = App.DB.messages.find(m=>m.recipientId === user?.id);
+    editor = {scenario:editor.scenario, profile:String(user?.id || ''),
+      order:App.API.listMyOrders()[0]?.id || '',
+      body:JSON.stringify({messageId:message?.id || 9001},null,2),
+      header:user ? `X-Access-Token: ${App.session.token}` : '', results:{}};
+  }
 
   // Helper function to create help icons with tooltips
   function helpIcon(helpText) {
@@ -32,7 +42,7 @@ window.App = window.App || {};
 
   // ログ
   function pushLog({kind,msg,ok,req,res}){
-    App.logs.unshift({ time: U.now(), kind, msg, ok, req, res });
+    App.logs.unshift({ time: U.now(), mode:App.MODE, user:App.session.user?.username || '-', kind, msg, ok, req, res });
     const max = 60;
     if(App.logs.length>max) App.logs.length = max;
   }
@@ -230,6 +240,7 @@ window.App = window.App || {};
 
     // Sub-tab switching function
     function switchSubTab(scenario) {
+      editor.scenario = scenario;
       // Update tab buttons
       tabA.classList.toggle('active', scenario === 'A');
       tabB.classList.toggle('active', scenario === 'B');
@@ -239,6 +250,7 @@ window.App = window.App || {};
       tabContentA.classList.toggle('active', scenario === 'A');
       tabContentB.classList.toggle('active', scenario === 'B');
       tabContentC.classList.toggle('active', scenario === 'C');
+      renderResult();
     }
 
     // Scenario A: Profile Query Attack
@@ -263,7 +275,8 @@ window.App = window.App || {};
         class:'input',
         type:'number',
         placeholder: App.session.user ? 'e.g. 1002（他のユーザIDを試してください）' : 'ログインが必要です',
-        value: App.session.user?.id ?? '',
+        value: editor.profile,
+        oninput:e=>{ editor.profile=e.target.value; },
         list: 'userIdListA'
       });
       const userDatalist = U.el('datalist',{id:'userIdListA'});
@@ -325,6 +338,8 @@ window.App = window.App || {};
       const pathInput = U.el('input',{
         class:'input',
         type:'text',
+        maxlength:App.core.LIMITS.order,
+        oninput:e=>{ editor.order=e.target.value; },
         placeholder: !App.session.user
           ? 'ログインが必要です'
           : (App.MODE==='SECURE' ? 'tok_xxx...（トークンを変更して試す）' : 'ORD-000101（番号を変更して試す）'),
@@ -333,13 +348,17 @@ window.App = window.App || {};
 
       const orderDatalist = U.el('datalist',{id:'orderIdListB'});
       if(myOrders.length > 0) {
-        pathInput.value = myOrders[0].id;
+        pathInput.value = editor.order;
         myOrders.forEach(o => {
           orderDatalist.appendChild(U.el('option',{value:o.id}, `Your order: ${o.id}`));
         });
       }
       attackPanel.appendChild(pathInput);
       attackPanel.appendChild(orderDatalist);
+      attackPanel.appendChild(U.el('button',{class:'btn-ghost', disabled:!App.session.user, onclick:()=>{
+        editor.order = App.API.listMyOrders()[0]?.id || '';
+        pathInput.value = editor.order;
+      }},'自分の注文IDを入れる'));
 
       // Send Order button for scenario B
       const btnPath = U.el('button',{class:'btn', style:'margin:8px 0;', onclick: () => onSendOrder(), disabled: !App.session.user}, 'Send Order');
@@ -380,9 +399,11 @@ window.App = window.App || {};
       const bodyTA = U.el('textarea',{
         class:'input',
         rows:'5',
+        maxlength:App.core.LIMITS.body,
+        oninput:e=>{ editor.body=e.target.value; },
         placeholder: App.session.user ? '' : 'ログインが必要です'
       },
-        JSON.stringify({ messageId: 9001 }, null, 2)
+        editor.body || JSON.stringify({ messageId: 9001 }, null, 2)
       );
       if(App.session.user) {
         attackPanel.appendChild(U.el('div',{class:'small'}, 'messageIdを9002, 9003などに変更して試してください'));
@@ -401,7 +422,9 @@ window.App = window.App || {};
         class:'input',
         type:'text',
         placeholder: App.session.token ? '' : 'ログインが必要です',
-        value: App.session.token? `X-Access-Token: ${App.session.token}` : ''
+        maxlength:App.core.LIMITS.header,
+        oninput:e=>{ editor.header=e.target.value; },
+        value: editor.header
       });
       attackPanel.appendChild(hdr);
 
@@ -470,21 +493,38 @@ window.App = window.App || {};
 
     container.appendChild(scoreCard);
 
+    // The node is not mounted yet; initialize after renderRoute appends it.
+    container.refresh = ()=>{ switchSubTab(editor.scenario); renderLogBox(); };
     return container;
 
     // ---- handlers ----
     function setReqRes(req, res){
+      editor.results[editor.scenario] = {req,res,mode:App.MODE,user:App.session.user?.username || '-'};
+      renderResult();
+      renderLogBox();
+    }
+    function renderResult(){
+      const snapshot = editor.results[editor.scenario];
+      const statusBadge = document.getElementById('statusBadge');
+      if(!statusBadge) return;
+      statusBadge.replaceChildren();
+      const resCard = document.getElementById('resCard');
+      resCard.classList.remove('response-success','response-error');
+      if(!snapshot){
+        document.getElementById('reqBox').textContent = 'リクエストがここに表示されます';
+        document.getElementById('resBox').textContent = 'レスポンスがここに表示されます';
+        return;
+      }
+      const {req,res,mode,user} = snapshot;
       document.getElementById('reqBox').textContent = U.code(req);
       document.getElementById('resBox').textContent = U.code(res);
 
       // Add status badge
-      const statusBadge = document.getElementById('statusBadge');
-      statusBadge.innerHTML = '';
+      statusBadge.appendChild(U.el('p',{class:'small'},`実行時: ${mode} / ${user} / ${editor.scenario}`));
       const statusClass = res.status === 200 ? 'status-200' : (res.status === 403 || res.status === 404 ? 'status-403' : '');
       statusBadge.appendChild(U.el('div',{class:`status-badge ${statusClass}`}, `HTTP ${res.status}`));
 
       // Add colored border to response card
-      const resCard = document.getElementById('resCard');
       if(res.status === 200) {
         resCard.classList.add('response-success');
         resCard.classList.remove('response-error');
@@ -500,7 +540,7 @@ window.App = window.App || {};
       lb.innerHTML = '';
       App.logs.slice(0,12).forEach(L=>{
         lb.appendChild(U.el('div',{class:'item'},[
-          U.el('div',{},`${L.time}  ${L.kind}  ${L.ok?'✅':'❌'}  ${L.msg||''}`),
+          U.el('div',{},`${L.time}  ${L.mode} / ${L.user}  ${L.kind}  ${L.ok?'✅':'❌'}  ${L.msg||''}`),
           L.req ? U.el('pre',{class:'code'}, U.code(L.req)) : null,
           L.res ? U.el('pre',{class:'code'}, U.code(L.res)) : null,
         ]));
@@ -512,7 +552,7 @@ window.App = window.App || {};
 
     function onSendProfile(){
       const userIdInput = document.querySelector('input[list="userIdListA"]');
-      const userId = Number(userIdInput?.value||0);
+      const userId = userIdInput?.value || '';
       const req = { method:'GET', path:'/profile', query:{ userId } };
       App.trackAttempt('profile', userId);
       const res = App.API.getProfile(req.query);
@@ -521,7 +561,7 @@ window.App = window.App || {};
       if(res.status===200){
         ok = true;
         if(App.MODE==='VULN' && App.session.user && res.data.id !== App.session.user.id){
-          App.score += 100;
+          App.core.complete(App.progress,'profile',App.MODE,App.session.user.id,res);
           msg = 'IDOR成功（他人プロフィール表示）';
           toast(msg,'good');
         }else{
@@ -542,7 +582,7 @@ window.App = window.App || {};
       if(res.status===200){
         ok=true;
         if(App.MODE==='VULN' && App.session.user && res.data.ownerId !== App.session.user.id){
-          App.score += 100;
+          App.core.complete(App.progress,'order',App.MODE,App.session.user.id,res);
           msg = 'IDOR成功（他人の注文閲覧）';
           toast(msg,'good');
         }else{
@@ -557,21 +597,19 @@ window.App = window.App || {};
       const bodyTA = document.querySelector('#scenario-C textarea');
       const hdrInput = document.querySelector('#scenario-C input[type="text"]');
 
-      // Headers
-      const headers = {};
-      const line = (hdrInput?.value||'').trim();
-      if(line){
-        const i = line.indexOf(':');
-        if(i>0){
-          const k = line.slice(0,i).trim();
-          const v = line.slice(i+1).trim();
-          headers[k] = v;
-        }
+      const parsedHeader = App.core.parseHeader(hdrInput?.value || '');
+      const parsedBody = App.core.parseBody(bodyTA?.value || '');
+      if(parsedHeader.error || parsedBody.error){
+        const reason = parsedHeader.error || parsedBody.error;
+        const res = {status:400,error:'Bad Request',reason};
+        const req = {method:'POST',path:'/api/messages/view',body:bodyTA?.value || '',headers:hdrInput?.value || ''};
+        pushLog({kind:'message',msg:'入力形式が不正です',ok:false,req,res});
+        setReqRes(req,res);
+        toast('入力形式が不正です','bad');
+        return;
       }
-      // Body
-      let body;
-      try{ body = JSON.parse(bodyTA?.value||'{}'); }
-      catch(e){ toast('JSONが不正です','bad'); return; }
+      const {headers} = parsedHeader;
+      const {body} = parsedBody;
 
       const req = { method:'POST', path:'/api/messages/view', headers, body };
       App.trackAttempt('message', String(body.messageId));
@@ -580,7 +618,7 @@ window.App = window.App || {};
       if(res.status===200){
         ok=true;
         if(App.MODE==='VULN' && App.session.user && res.data.recipientId !== App.session.user.id){
-          App.score += 100;
+          App.core.complete(App.progress,'message',App.MODE,App.session.user.id,res);
           msg = 'IDOR成功（他人宛メッセージ閲覧）';
           toast(msg,'good');
         }else{
@@ -595,9 +633,10 @@ window.App = window.App || {};
       const msgs = [
         'userIdを自分以外に変えると他人のプロフィールが見えるかも…',
         '自分のID±1を試してみてください（例：1001→1002）',
-        '1002を入力してSend Profileを押してください'
+        `userId=${App.DB.users.find(u=>u.id!==App.session.user?.id).id} を指定してください`
       ];
-      App.score = Math.max(0, App.score - 30);
+      if(!App.session.user) return;
+      App.core.hint(App.progress,'profile',n);
       toast(`プロフィールのヒント ${n}: ${msgs[n-1]}`, 'warn');
       pushLog({kind:'hint', msg:`プロフィールヒント ${n}`, ok:true});
       renderLogBox();
@@ -624,7 +663,8 @@ window.App = window.App || {};
         '末尾の数字を変更してみてください（例：ORD-000101→ORD-000102）',
         hint3
       ];
-      App.score = Math.max(0, App.score - 30);
+      if(!App.session.user) return;
+      App.core.hint(App.progress,'order',n);
       toast(`注文のヒント ${n}: ${msgs[n-1]}`, 'warn');
       pushLog({kind:'hint', msg:`注文ヒント ${n}`, ok:true});
       renderLogBox();
@@ -634,9 +674,10 @@ window.App = window.App || {};
       const msgs = [
         'messageIdを別の番号に変えると他人宛メッセージが見えるかも…',
         '9001を9002に変更してみてください',
-        '{"messageId":9002}を入力してSend Messageを押してください'
+        `messageId=${App.DB.messages.find(m=>m.recipientId!==App.session.user?.id).id} を指定してください`
       ];
-      App.score = Math.max(0, App.score - 30);
+      if(!App.session.user) return;
+      App.core.hint(App.progress,'message',n);
       toast(`メッセージのヒント ${n}: ${msgs[n-1]}`, 'warn');
       pushLog({kind:'hint', msg:`メッセージヒント ${n}`, ok:true});
       renderLogBox();
@@ -644,6 +685,8 @@ window.App = window.App || {};
 
     function clearScore(){
       App.score = 0;
+      App.progress.completed = [];
+      App.progress.hints = [];
       const scoreBadge = document.getElementById('scoreDisplay');
       if(scoreBadge) scoreBadge.textContent = `Score: ${App.score}`;
       toast('スコアをクリアしました', 'warn');
@@ -656,15 +699,16 @@ window.App = window.App || {};
     }
 
     function clearBoth(){
-      App.score = 0;
+      App.progress = App.core.newProgress();
       App.logs = [];
+      resetEditors();
+      App.ui.renderRoute();
       const scoreBadge = document.getElementById('scoreDisplay');
       if(scoreBadge) scoreBadge.textContent = `Score: ${App.score}`;
       renderLogBox();
       toast('スコアとログをクリアしました', 'warn');
     }
 
-    return grid;
   }
 
   function comparePage(){
@@ -1002,7 +1046,8 @@ window.App = window.App || {};
     else if(h.startsWith('#/learn')) node = learnPage();
     else node = homePage();
     root.innerHTML = ''; root.appendChild(node);
+    node.refresh?.();
   }
 
-  App.ui = { toast, pushLog, renderRoute, renderLoginBox, renderModeIndicator };
+  App.ui = { toast, pushLog, renderRoute, renderLoginBox, renderModeIndicator, resetEditors };
 })();

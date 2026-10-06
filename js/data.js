@@ -63,20 +63,16 @@ window.App = window.App || {};
 
     App.DB = { users, orders, messages, tokenMap, reverseToken };
     App.progress = App.core.newProgress();
-    App.score = 0;
-    App.attempts = [];
+    Object.defineProperty(App, 'score', {configurable:true,
+      get:()=>App.progress.score, set:value=>{ App.progress.score=value; }});
     App.logs = [];
   }
 
   // 検知（擬似）
   function trackAttempt(kind, target){
-    App.attempts.push({ t: Date.now(), kind, target });
-    const recent = App.attempts.filter(a => Date.now() - a.t < 8000);
-    const distinctTargets = new Set(recent.map(a=>a.target));
-    if(recent.length > 8 || distinctTargets.size > 5){
-      App.score = Math.max(0, App.score - 50);
-      App.ui.toast('Suspicious pattern detected', 'warn');
-      App.ui.pushLog({ kind:'detect', msg:'Suspicious pattern detected', ok:false });
+    if(App.core.track(App.progress, kind, target, Date.now())){
+      App.ui.toast('疑似警告：短時間に試行が集中しています。遮断も減点もしません。', 'warn');
+      App.ui.pushLog({ kind:'detect', msg:'疑似警告：短時間に試行が集中しています。遮断も減点もしません。', ok:false });
     }
   }
 
