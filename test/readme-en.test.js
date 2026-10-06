@@ -55,7 +55,7 @@ test('README relative links resolve and matching screenshots exist',()=>{
       assert.ok(fs.existsSync(path.join(root,m[1])),m[1]);
     }
   }
-  for(const file of ['screenshot.png','screenshot2.png','screenshot3.png']){
+  for(const file of ['screenshot.png','screenshot2.png','screenshot3.png','screenshot4.png']){
     for(const prefix of ['assets/','assets/en/']){
       const data=fs.readFileSync(path.join(root,prefix,file));
       assert.equal(data.subarray(1,4).toString(),'PNG');assert.ok(data.length>10000);
@@ -66,7 +66,17 @@ test('README relative links resolve and matching screenshots exist',()=>{
 });
 test('README retains explicit limits and distinguishes references from authorization',()=>{
   for(const phrase of ['not a real access-control boundary','do not replace authorization','not real attack detection',
-    'not security or skill','Not implemented','Only theme and language','all public and fictional']) assert.ok(en.includes(phrase),phrase);
+    'not security or skill','Not implemented','Only theme and language','all public dummy data for learning']) assert.ok(en.includes(phrase),phrase);
   assert.match(ja,/本物のアクセス制御ではありません/);assert.match(ja,/実装なし/);
   assert.match(ja,/実際の攻撃検知ではありません/);assert.match(ja,/テーマと言語だけ/);
+});
+test('plain data wording and learning features have explicit bilingual descriptions',()=>{
+  assert.match(ja,/実在の人物や取引の記録ではありません/);
+  assert.match(en,/not records of real people or transactions/);
+  assert.doesNotMatch(ja,/架空/);
+  for(const phrase of ['同じ注文','変更後は未実行','開いたヒント','手順付きモード','試行回数は変更しません'])
+    assert.ok(ja.includes(phrase),phrase);
+  for(const phrase of ['same order','changes have not been run','Opened hints','guided mode',
+    'does not change the input, mode, score, completion status, logs or attempt count'])
+    assert.ok(en.includes(phrase),phrase);
 });

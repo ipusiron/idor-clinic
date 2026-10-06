@@ -10,7 +10,8 @@ English · [日本語](README.md)
 **Day065 - 100 Security Tools with Generative AI**
 
 IDOR Clinic is a browser-only simulator for learning about IDOR: missing authorization checks when a user changes an object ID.
-Use fictional profiles, orders and messages to compare VULN (no object authorization) with SECURE (object authorization).
+Use dummy data for learning to compare VULN (no object authorization) with SECURE (object authorization).
+The profiles, orders and messages are made-up examples, not records of real people or transactions.
 
 SECURE is a teaching model, not a real access-control boundary.
 Random IDs make guessing harder as an additional measure; they do not replace authorization for each object.
@@ -39,6 +40,10 @@ Non-Japanese browser languages use English.
 
 *English, dark theme. The learning page.*
 
+![Decision explanations for the same order in both modes](assets/en/screenshot4.png)
+
+*English, light theme. Compare ownership checks using the sequential ID and token for the same order.*
+
 ## 🎯 Learning goals
 
 - Distinguish login-based authentication from authorization for an action on an object
@@ -60,6 +65,45 @@ The header's session token models authentication credentials; it is not an objec
 
 Changing modes preserves inputs and the last result.
 The displayed result belongs to the last execution: check its recorded mode and user, and run again to compare modes.
+
+## 🧑‍🏫 Guided steps and decision explanations
+
+### Your first profile experiment
+
+Select Start guided mode in App to work through retrieving your own profile, retrieving another user's profile and observing a denial in SECURE.
+Examples adapt to the logged-in user.
+Load example conditions sets only the editor input and mode; it does not retrieve anything.
+Press Send Profile yourself. The guide advances only when the instructed conditions produce the expected result.
+Return to free exploration hides the guide without clearing the input or results.
+
+### Why this result occurred
+
+Normal execution displays the login, input format, object lookup and profile-user, owner or recipient checks in order.
+Messages also show the session-token check.
+Processing stops at a failed check, and subsequent stages are marked Not run.
+Checks deliberately omitted in VULN are marked Not checked, separately from stages not reached after a failure.
+Malformed JSON or headers stop at input validation before the API decisions run.
+
+### Compare both modes for this object
+
+Compare both modes for this object displays VULN and SECURE responses and decision explanations for the current input.
+It does not change the input, mode, score, completion status, logs or attempt count.
+It does not advance guided-mode progress either.
+
+For orders, the input reference is resolved in the current mode, then the sequential ID and token for the same order are used in their respective modes.
+This differs from sending the identical string to both modes; the references used are displayed.
+Comparison is unavailable if the order cannot be identified in the current mode.
+Message headers are used as entered; invalid credentials are not automatically corrected.
+
+### Input changes and hints
+
+When the input or mode differs from the conditions used for a result, a notice says that changes have not been run.
+Restoring the original conditions returns the display to a matching state.
+Normal and comparison results are tracked separately; running one does not update the other's conditions.
+
+Opened hints remain near the editor and can be reread after changing pages or languages.
+Changing the login, resetting the score or resetting the experiment clears their display.
+Changing the login alone does not clear hint-use history, so reopening the same hint does not deduct points again.
 
 ## 🧪 Three scenarios
 
@@ -149,10 +193,14 @@ This simple count rule can also trigger during normal repeated use. It is not re
 | Reset experiment | Inputs, results, score, completion status, hints, logs and attempt history reset; user, mode and scenario retained |
 | Reload page | Simulated session and experiment state discarded; order tokens regenerated |
 
+Comparison results are retained across mode, page and language changes, and cleared on login changes or experiment reset.
+Guided-mode progress restarts on login changes or experiment reset.
+Whether the guide is shown or hidden is retained.
+
 ## 🧭 Pages and controls
 
 - Home: overview, limitations and exercise steps
-- App: three scenarios, inputs, simulated requests and responses, score and logs
+- App: three scenarios, guided steps, inputs, decision explanations, comparisons of results from both modes, score and logs
 - Compare: implemented authorization and reference handling
 - Learn: four expandable sections on authentication and authorization, reference locations, defenses and limitations, plus references
 
@@ -168,11 +216,11 @@ The app cannot send attack requests to a real API server.
 Only theme and language preferences are saved in localStorage. If storage is denied, the current page remains usable.
 
 Opening the public page retrieves HTML, JavaScript, CSS, images and public JSON from the same site.
-Failed JSON retrieval, invalid fixtures or a 5-second timeout use identical embedded fictional fixtures.
-When opened through `file://`, the app uses embedded fixtures without requesting JSON.
+Failed JSON retrieval, invalid data or a 5-second timeout use identical embedded dummy data.
+When opened through `file://`, the app uses embedded data without requesting JSON.
 Opening a reference link navigates to that external site.
 
-The data comprises 3 users (alice, bob and carol), 6 orders and 5 messages, all public and fictional.
+The data comprises 3 users (alice, bob and carol), 6 orders and 5 messages, all public dummy data for learning.
 Code and state can be changed in developer tools, so SECURE is not a real security boundary.
 Real HTTP authentication, servers, network transport, shared permissions and real attack detection are not reproduced.
 Do not enter secrets or real authentication credentials.
@@ -209,7 +257,7 @@ With Node.js 22 or later, run the automated tests without installing packages.
 npm test
 ```
 
-Tests cover authorization combinations, input validation, scores, warnings, language preferences, CSP, color contrast and documentation consistency.
+Tests cover authorization combinations, decision traces, comparison side effects, input changes, guided progress, scores, warnings, language preferences, CSP, color contrast and documentation consistency.
 GitHub Actions runs the same tests on push and pull_request.
 See [DEVELOPMENT.md](DEVELOPMENT.md) for implementation responsibilities and manual checks.
 
@@ -228,11 +276,13 @@ idor-clinic/
 │   ├── screenshot.png
 │   ├── screenshot2.png
 │   ├── screenshot3.png
+│   ├── screenshot4.png
 │   └── en/                    # Corresponding English screenshots
 │       ├── screenshot.png
 │       ├── screenshot2.png
-│       └── screenshot3.png
-├── data/                      # Public fictional fixtures
+│       ├── screenshot3.png
+│       └── screenshot4.png
+├── data/                      # Public dummy data for learning
 │   ├── users.json
 │   ├── orders.json
 │   └── messages.json

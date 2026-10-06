@@ -41,6 +41,12 @@ Only theme and language are stored in localStorage; storage denial must not prev
 - Logs retain 60 entries and display 12; there is no rate limiter or sessionStorage implementation
 - Mode, page and language changes preserve inputs and executed-result context
 - Login/logout initialize inputs/results and clear attempt history, while keeping score and logs
+- Normal execution and comparison share the same decision path and trace; unreachable checks stay unexecuted
+- Comparison must not mutate session, mode, inputs, score, completion, logs, attempts or guide progress
+- Order comparison resolves the current-mode reference before converting it; never guess an unresolved reference
+- Input and mode changes update normal-result and comparison-result freshness independently
+- Opened hints survive route/language changes; login changes and score/experiment resets clear their display
+- Guided profile steps advance only on explicit normal execution matching the required user, target, mode and response
 
 ## Editing and verification
 
