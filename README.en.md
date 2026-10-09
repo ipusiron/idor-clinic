@@ -227,6 +227,12 @@ Do not enter secrets or real authentication credentials.
 
 ## 🎓 Use cases
 
+Ways of using this tool in particular
+
+- Confirming that success comes only when you reach another user's object (the definition of IDOR): in VULN mode, when the response for an order whose owner is not you (owner 2, user 1) comes back 200, the challenge succeeds and 100 points are added. With the same 200 but an order whose owner is you (owner 1), it does not succeed. You can confirm, by success and score, the definition that reading your own object is authorized access and it is only IDOR once you reach another user's object
+- Confirming that fixing authorization stops the same action from succeeding (comparing vulnerable and fixed): an action on another user's order that succeeded in VULN mode does not succeed when done the same way in SECURE mode. If the response is denied with 403, no points are added even when the owner is someone else. You can confirm, by switching modes, that the single fix of adding an authorization check turns the earlier attack into a denial
+- Confirming that an authentication token and authorization are separate (authentication versus authorization): header parsing extracts a token only when there is exactly one `X-Access-Token` header with a string value. With two headers of the same name it cannot decide which to trust, so it extracts none. Even when a valid token tells you "who", whether that person "may see this object" is a separate check, and you can show that IDOR is an authorization failure that happens even with a valid token
+
 - Classes and self-study: compare responses for your own and other users' objects, and explain authentication versus authorization
 - Introductory CTFs and internal exercises: repeat a successful VULN action in SECURE and record why it is denied
 - Design reviews: compare the model's owner-only policy with your service's sharing and action permissions
