@@ -16,7 +16,7 @@ category_ja:
 category_en:
   - Web Security
 
-difficulty: 3
+difficulty: 2
 
 tags:
   - idor
